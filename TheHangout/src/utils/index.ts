@@ -649,10 +649,13 @@ export function deduplicateBy<T>(
     return array.filter((item) => {
       const uniqueKey =
         typeof key === 'function' ? key(item) : item[key];
-      if (seen.has(uniqueKey)) {
+      const keyValue = typeof uniqueKey === 'string' || typeof uniqueKey === 'number' 
+        ? uniqueKey 
+        : String(uniqueKey);
+      if (seen.has(keyValue)) {
         return false;
       }
-      seen.add(uniqueKey);
+      seen.add(keyValue);
       return true;
     });
   } catch (error) {
