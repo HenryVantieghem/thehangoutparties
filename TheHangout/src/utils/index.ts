@@ -96,6 +96,33 @@ export function isLocationNearHome(
 }
 
 /**
+ * Format distance in kilometers to human-readable string
+ * @param km - Distance in kilometers
+ * @returns Formatted string like "2.5 km away" or "500 m away"
+ */
+export function formatDistance(km: number): string {
+  try {
+    if (typeof km !== 'number' || km < 0) {
+      return 'Unknown distance';
+    }
+
+    if (km < 1) {
+      const meters = Math.round(km * 1000);
+      return `${meters} m away`;
+    }
+
+    if (km < 10) {
+      return `${km.toFixed(1)} km away`;
+    }
+
+    return `${Math.round(km)} km away`;
+  } catch (error) {
+    logError('formatDistance', error);
+    return 'Unknown distance';
+  }
+}
+
+/**
  * Get address from coordinates using reverse geocoding
  * Note: This is a placeholder - in production, use a geocoding service like Google Maps API
  * @param latitude - Latitude coordinate
@@ -117,6 +144,29 @@ export async function getAddressFromCoordinates(
     return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
   } catch (error) {
     throw new Error(`Failed to get address: ${getErrorMessage(error)}`);
+  }
+}
+
+/**
+ * Get coordinates from address using geocoding
+ * Note: This is a placeholder - in production, use a geocoding service
+ * @param address - Address string
+ * @returns Promise resolving to coordinates object
+ */
+export async function getCoordinatesFromAddress(address: string): Promise<{
+  latitude: number;
+  longitude: number;
+}> {
+  try {
+    if (typeof address !== 'string' || !address.trim()) {
+      throw new Error('Valid address is required');
+    }
+
+    // Placeholder implementation
+    // In production, integrate with a geocoding service
+    throw new Error('Geocoding not implemented');
+  } catch (error) {
+    throw new Error(`Failed to get coordinates: ${getErrorMessage(error)}`);
   }
 }
 
@@ -228,6 +278,32 @@ export function isToday(date: Date | string): boolean {
   }
 }
 
+/**
+ * Check if two dates are on the same day
+ * @param date1 - First date
+ * @param date2 - Second date
+ * @returns True if dates are on the same day
+ */
+export function isSameDay(date1: Date | string, date2: Date | string): boolean {
+  try {
+    const d1 = typeof date1 === 'string' ? new Date(date1) : date1;
+    const d2 = typeof date2 === 'string' ? new Date(date2) : date2;
+
+    if (isNaN(d1.getTime()) || isNaN(d2.getTime())) {
+      return false;
+    }
+
+    return (
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate()
+    );
+  } catch (error) {
+    logError('isSameDay', error);
+    return false;
+  }
+}
+
 // ============================================================================
 // IMAGE UTILITIES
 // ============================================================================
@@ -312,6 +388,26 @@ export async function generateThumbnail(
     return resizeImage(imageUri, size, size);
   } catch (error) {
     throw new Error(`Failed to generate thumbnail: ${getErrorMessage(error)}`);
+  }
+}
+
+/**
+ * Generate blur hash for an image
+ * Note: This is a placeholder - in production, use blurhash library
+ * @param imageUri - URI of the image
+ * @returns Promise resolving to blur hash string
+ */
+export async function generateBlurHash(imageUri: string): Promise<string> {
+  try {
+    if (!imageUri) {
+      throw new Error('Image URI is required');
+    }
+
+    // Placeholder implementation
+    // In production, use blurhash library to generate hash
+    return 'LKO2?U%2Tw=w]~RBVZRi};RPxuwH';
+  } catch (error) {
+    throw new Error(`Failed to generate blur hash: ${getErrorMessage(error)}`);
   }
 }
 
@@ -419,6 +515,27 @@ export function sanitizeInput(input: string): string {
   } catch (error) {
     logError('sanitizeInput', error);
     return '';
+  }
+}
+
+/**
+ * Capitalize first letter of each word in a string
+ * @param str - String to capitalize
+ * @returns Capitalized string
+ */
+export function capitalizeWords(str: string): string {
+  try {
+    if (typeof str !== 'string') {
+      return '';
+    }
+
+    return str
+      .split(' ')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  } catch (error) {
+    logError('capitalizeWords', error);
+    return str;
   }
 }
 
@@ -544,6 +661,59 @@ export function deduplicateBy<T>(
   }
 }
 
+/**
+ * Get unique items from an array
+ * @param array - Array to get unique items from
+ * @param key - Optional key to use for uniqueness
+ * @returns Array with unique items
+ */
+export function unique<T>(
+  array: T[],
+  key?: keyof T | ((item: T) => string | number)
+): T[] {
+  try {
+    if (!Array.isArray(array)) {
+      throw new Error('First argument must be an array');
+    }
+
+    if (key) {
+      return deduplicateBy(array, key);
+    }
+
+    return Array.from(new Set(array));
+  } catch (error) {
+    logError('unique', error);
+    return array;
+  }
+}
+
+/**
+ * Split an array into chunks of specified size
+ * @param array - Array to chunk
+ * @param size - Size of each chunk
+ * @returns Array of chunks
+ */
+export function chunk<T>(array: T[], size: number): T[][] {
+  try {
+    if (!Array.isArray(array)) {
+      throw new Error('First argument must be an array');
+    }
+
+    if (size <= 0) {
+      throw new Error('Chunk size must be positive');
+    }
+
+    const chunks: T[][] = [];
+    for (let i = 0; i < array.length; i += size) {
+      chunks.push(array.slice(i, i + size));
+    }
+    return chunks;
+  } catch (error) {
+    logError('chunk', error);
+    return [];
+  }
+}
+
 // ============================================================================
 // NUMBER UTILITIES
 // ============================================================================
@@ -620,6 +790,79 @@ export function roundToDecimal(num: number, decimals: number = 2): number {
   }
 }
 
+/**
+ * Format a number with K/M suffixes (e.g., 1.2K, 1.5M)
+ * @param num - Number to format
+ * @returns Formatted string
+ */
+export function formatNumberCompact(num: number): string {
+  try {
+    if (typeof num !== 'number' || isNaN(num)) {
+      return '0';
+    }
+
+    if (num >= 1000000) {
+      return `${(num / 1000000).toFixed(1)}M`;
+    }
+
+    if (num >= 1000) {
+      return `${(num / 1000).toFixed(1)}K`;
+    }
+
+    return num.toString();
+  } catch (error) {
+    logError('formatNumberCompact', error);
+    return '0';
+  }
+}
+
+/**
+ * Calculate percentage of a value relative to total
+ * @param value - Value to calculate percentage for
+ * @param total - Total value
+ * @returns Percentage (0-100)
+ */
+export function percentage(value: number, total: number): number {
+  try {
+    if (typeof value !== 'number' || typeof total !== 'number') {
+      throw new Error('Both values must be numbers');
+    }
+
+    if (total === 0) {
+      return 0;
+    }
+
+    return roundToDecimal((value / total) * 100, 1);
+  } catch (error) {
+    logError('percentage', error);
+    return 0;
+  }
+}
+
+/**
+ * Clamp a value between min and max
+ * @param value - Value to clamp
+ * @param min - Minimum value
+ * @param max - Maximum value
+ * @returns Clamped value
+ */
+export function clamp(value: number, min: number, max: number): number {
+  try {
+    if (typeof value !== 'number' || typeof min !== 'number' || typeof max !== 'number') {
+      throw new Error('All values must be numbers');
+    }
+
+    if (min > max) {
+      throw new Error('Min must be less than or equal to max');
+    }
+
+    return Math.min(Math.max(value, min), max);
+  } catch (error) {
+    logError('clamp', error);
+    return value;
+  }
+}
+
 // ============================================================================
 // ERROR UTILITIES
 // ============================================================================
@@ -686,6 +929,48 @@ export function isNetworkError(error: unknown): boolean {
     );
   } catch {
     return false;
+  }
+}
+
+/**
+ * Check if an error is an authentication-related error
+ * @param error - Error to check
+ * @returns True if error is auth-related
+ */
+export function isAuthError(error: unknown): boolean {
+  try {
+    const message = getErrorMessage(error).toLowerCase();
+
+    return (
+      message.includes('auth') ||
+      message.includes('unauthorized') ||
+      message.includes('forbidden') ||
+      message.includes('token') ||
+      message.includes('session') ||
+      message.includes('login') ||
+      message.includes('password')
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Capture exception for error tracking/analytics
+ * @param error - Error to capture
+ * @param context - Additional context about the error
+ */
+export function captureException(error: unknown, context?: Record<string, any>): void {
+  try {
+    const errorMessage = getErrorMessage(error);
+    const timestamp = new Date().toISOString();
+    
+    // In production, integrate with error tracking service (Sentry, Bugsnag, etc.)
+    console.error(`[${timestamp}] Exception captured:`, errorMessage, context || {});
+    
+    // Example: Sentry.captureException(error, { extra: context });
+  } catch {
+    // Silently fail if capturing fails
   }
 }
 
@@ -805,10 +1090,10 @@ export function validateMessage(message: string): {
       return { isValid: false, error: 'Message cannot be empty' };
     }
 
-    if (trimmed.length > 1000) {
+    if (trimmed.length > VALIDATION.MESSAGE_MAX) {
       return {
         isValid: false,
-        error: 'Message must be 1000 characters or less',
+        error: `Message must be ${VALIDATION.MESSAGE_MAX} characters or less`,
       };
     }
 
@@ -817,5 +1102,77 @@ export function validateMessage(message: string): {
     logError('validateMessage', error);
     return { isValid: false, error: 'Failed to validate message' };
   }
+}
+
+// ============================================================================
+// PERFORMANCE UTILITIES
+// ============================================================================
+
+/**
+ * Debounce a function call
+ * @param fn - Function to debounce
+ * @param delay - Delay in milliseconds
+ * @returns Debounced function
+ */
+export function debounce<T extends (...args: any[]) => any>(
+  fn: T,
+  delay: number
+): (...args: Parameters<T>) => void {
+  let timeoutId: NodeJS.Timeout | null = null;
+
+  return (...args: Parameters<T>) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
+    timeoutId = setTimeout(() => {
+      fn(...args);
+    }, delay);
+  };
+}
+
+/**
+ * Throttle a function call
+ * @param fn - Function to throttle
+ * @param interval - Interval in milliseconds
+ * @returns Throttled function
+ */
+export function throttle<T extends (...args: any[]) => any>(
+  fn: T,
+  interval: number
+): (...args: Parameters<T>) => void {
+  let lastCall = 0;
+
+  return (...args: Parameters<T>) => {
+    const now = Date.now();
+
+    if (now - lastCall >= interval) {
+      lastCall = now;
+      fn(...args);
+    }
+  };
+}
+
+/**
+ * Memoize a function with cache
+ * @param fn - Function to memoize
+ * @returns Memoized function
+ */
+export function memoize<T extends (...args: any[]) => any>(
+  fn: T
+): (...args: Parameters<T>) => ReturnType<T> {
+  const cache = new Map<string, ReturnType<T>>();
+
+  return (...args: Parameters<T>): ReturnType<T> => {
+    const key = JSON.stringify(args);
+
+    if (cache.has(key)) {
+      return cache.get(key)!;
+    }
+
+    const result = fn(...args);
+    cache.set(key, result);
+    return result;
+  };
 }
 
