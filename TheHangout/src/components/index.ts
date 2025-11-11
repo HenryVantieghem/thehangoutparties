@@ -48,3 +48,5 @@ export type { FriendRequestProps } from './FriendRequest';
 export { CommentItem } from './CommentItem';
 export type { CommentItemProps } from './CommentItem';
 
+export { ErrorBoundary } from './ErrorBoundary';
+
