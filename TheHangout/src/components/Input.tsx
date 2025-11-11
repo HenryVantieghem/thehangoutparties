@@ -17,6 +17,10 @@ export interface InputProps extends TextInputProps {
   error?: string;
   /** Show validation state */
   isValid?: boolean;
+  /** Left icon component */
+  leftIcon?: React.ReactNode;
+  /** Right icon component */
+  rightIcon?: React.ReactNode;
   /** Custom container style */
   containerStyle?: ViewStyle;
   /** Custom input style */
@@ -34,6 +38,8 @@ export const Input: React.FC<InputProps> = ({
   label,
   error,
   isValid,
+  leftIcon,
+  rightIcon,
   containerStyle,
   inputStyle,
   labelStyle,
@@ -67,16 +73,23 @@ export const Input: React.FC<InputProps> = ({
           showValidation && isValid && styles.inputValid,
         ]}
       >
+        {leftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
         <TextInput
           testID={testID}
           accessibilityLabel={label || 'Text input'}
           accessibilityHint={error || undefined}
-          style={[styles.input, inputStyle]}
+          style={[
+            styles.input,
+            leftIcon && styles.inputWithLeftIcon,
+            rightIcon && styles.inputWithRightIcon,
+            inputStyle,
+          ]}
           placeholderTextColor={COLORS.gray}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           {...props}
         />
+        {rightIcon && <View style={styles.rightIcon}>{rightIcon}</View>}
       </View>
       {error && (
         <Text
@@ -109,6 +122,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
     backdropFilter: 'blur(10px)',
   },
   inputFocused: {
@@ -121,10 +136,23 @@ const styles = StyleSheet.create({
   inputValid: {
     borderColor: COLORS.success,
   },
+  leftIcon: {
+    marginRight: SPACING.sm,
+  },
+  rightIcon: {
+    marginLeft: SPACING.sm,
+  },
   input: {
+    flex: 1,
     fontSize: 16,
     color: COLORS.white,
     padding: 0,
+  },
+  inputWithLeftIcon: {
+    paddingLeft: 0,
+  },
+  inputWithRightIcon: {
+    paddingRight: 0,
   },
   errorText: {
     fontSize: 12,

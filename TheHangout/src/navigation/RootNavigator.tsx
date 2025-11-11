@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../stores';
 import { COLORS } from '../constants';
 
@@ -11,6 +12,7 @@ import OnboardingScreen from '../screens/OnboardingScreen';
 import SignInScreen from '../screens/auth/SignInScreen';
 import SignUpScreen from '../screens/auth/SignUpScreen';
 import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
+import ResetPasswordEmailSentScreen from '../screens/auth/ResetPasswordEmailSentScreen';
 import DiscoverScreen from '../screens/DiscoverScreen';
 import MapScreen from '../screens/MapScreen';
 import CreatePartyScreen from '../screens/CreatePartyScreen';
@@ -33,6 +35,7 @@ export type AuthStackParamList = {
   SignIn: undefined;
   SignUp: undefined;
   ResetPassword: undefined;
+  ResetPasswordEmailSent: { email: string };
 };
 
 export type MainTabParamList = {
@@ -61,6 +64,7 @@ function AuthNavigator() {
       <AuthStack.Screen name="SignIn" component={SignInScreen} />
       <AuthStack.Screen name="SignUp" component={SignUpScreen} />
       <AuthStack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+      <AuthStack.Screen name="ResetPasswordEmailSent" component={ResetPasswordEmailSentScreen} />
     </AuthStack.Navigator>
   );
 }

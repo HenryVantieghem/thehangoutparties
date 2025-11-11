@@ -24,6 +24,8 @@ export interface ButtonProps extends Omit<TouchableOpacityProps, 'style'> {
   loading?: boolean;
   /** Disable button interaction */
   disabled?: boolean;
+  /** Left icon component */
+  leftIcon?: React.ReactNode;
   /** Custom container style */
   style?: ViewStyle;
   /** Custom text style */
@@ -41,6 +43,7 @@ export const Button: React.FC<ButtonProps> = ({
   size = 'medium',
   loading = false,
   disabled = false,
+  leftIcon,
   style,
   textStyle,
   testID,
@@ -74,17 +77,20 @@ export const Button: React.FC<ButtonProps> = ({
           testID={`${testID}-loading`}
         />
       ) : (
-        <Text
-          style={[
-            styles.text,
-            styles[`${variant}Text`],
-            styles[`${size}Text`],
-            isDisabled && styles.disabledText,
-            textStyle,
-          ]}
-        >
-          {title}
-        </Text>
+        <>
+          {leftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
+          <Text
+            style={[
+              styles.text,
+              styles[`${variant}Text`],
+              styles[`${size}Text`],
+              isDisabled && styles.disabledText,
+              textStyle,
+            ]}
+          >
+            {title}
+          </Text>
+        </>
       )}
     </TouchableOpacity>
   );
@@ -127,6 +133,9 @@ const styles = StyleSheet.create({
   text: {
     fontWeight: '600',
     textAlign: 'center',
+  },
+  leftIcon: {
+    marginRight: SPACING.xs,
   },
   primaryText: {
     color: COLORS.dark,
