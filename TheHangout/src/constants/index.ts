@@ -1,92 +1,100 @@
 /**
- * Color palette for the application
+ * Complete design system constants for The Hangout
  */
+
 export const COLORS = {
-  /** Dark primary color */
-  dark: '#000000',
-  /** Dark secondary color */
-  darkSecondary: '#1a1a1a',
-  /** Cyan accent color */
-  cyan: '#00d4ff',
-  /** Pink accent color */
-  pink: '#ff006e',
-  /** White color */
-  white: '#ffffff',
-  /** Gray color */
-  gray: '#808080',
-  /** Error/red color */
-  error: '#ff3333',
-  /** Success/green color */
-  success: '#00ff88',
+  // Primary
+  dark: '#0A0E27',
+  darkSecondary: '#1a1f3a',
+  darkTertiary: '#2D3748',
+
+  // Accent
+  cyan: '#00D9FF',
+  cyanLight: '#00FFFF',
+  cyanDark: '#00A8CC',
+  pink: '#FF006E',
+  pinkLight: '#FF4D95',
+  pinkDark: '#CC0052',
+
+  // Neutral
+  white: '#FFFFFF',
+  gray100: '#F7FAFC',
+  gray200: '#EDF2F7',
+  gray300: '#E2E8F0',
+  gray400: '#CBD5E0',
+  gray500: '#A0AEC0',
+  gray600: '#718096',
+  gray700: '#4A5568',
+  gray800: '#2D3748',
+
+  // Status
+  error: '#FF3B30',
+  errorLight: '#FF6B63',
+  success: '#34C759',
+  warning: '#FF9500',
+  info: '#00D9FF',
 } as const;
 
-/**
- * Typography scale for text styles
- */
 export const TYPOGRAPHY = {
-  /** Display text style - largest heading */
-  display: 'display',
-  /** Large title text style */
-  largeTitle: 'largeTitle',
-  /** Title 3 text style */
-  title3: 'title3',
-  /** Body text style */
-  body: 'body',
-  /** Caption 1 text style - smallest text */
-  caption1: 'caption1',
+  display1: { fontSize: 40, fontWeight: '700' as const, lineHeight: 48, letterSpacing: -0.5 },
+  display2: { fontSize: 34, fontWeight: '700' as const, lineHeight: 41, letterSpacing: -0.3 },
+  largeTitle: { fontSize: 28, fontWeight: '700' as const, lineHeight: 34, letterSpacing: -0.2 },
+  title1: { fontSize: 24, fontWeight: '700' as const, lineHeight: 29, letterSpacing: -0.1 },
+  title2: { fontSize: 20, fontWeight: '700' as const, lineHeight: 24, letterSpacing: 0 },
+  title3: { fontSize: 18, fontWeight: '600' as const, lineHeight: 22, letterSpacing: 0 },
+  body: { fontSize: 16, fontWeight: '400' as const, lineHeight: 24, letterSpacing: 0.3 },
+  bodyBold: { fontSize: 16, fontWeight: '600' as const, lineHeight: 24, letterSpacing: 0.3 },
+  bodySmall: { fontSize: 14, fontWeight: '400' as const, lineHeight: 20, letterSpacing: 0.2 },
+  caption1: { fontSize: 12, fontWeight: '400' as const, lineHeight: 16, letterSpacing: 0.4 },
+  caption2: { fontSize: 11, fontWeight: '400' as const, lineHeight: 13, letterSpacing: 0.5 },
 } as const;
 
-/**
- * Spacing scale for consistent layout spacing
- */
 export const SPACING = {
-  /** Extra small spacing: 4px */
   xs: 4,
-  /** Small spacing: 8px */
   sm: 8,
-  /** Medium spacing: 12px */
   md: 12,
-  /** Large spacing: 16px */
   lg: 16,
-  /** Extra large spacing: 24px */
   xl: 24,
-  /** Extra extra large spacing: 32px */
   xxl: 32,
+  xxxl: 48,
 } as const;
 
-/**
- * Animation configuration constants
- */
+export const RADIUS = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  full: 9999,
+} as const;
+
 export const ANIMATIONS = {
-  /** Animation duration in milliseconds */
-  duration: 300,
-  /** Animation easing function */
-  easing: 'ease-in-out',
-  /** Spring animation damping value */
-  springDamping: 0.7,
+  fast: 100,
+  normal: 200,
+  slow: 300,
+  slower: 400,
+  slowest: 500,
+  springConfig: { damping: 10, mass: 1, stiffness: 100, overshootClamping: false },
+  easeInOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
 } as const;
 
-/**
- * API configuration constants
- */
 export const API = {
-  /** Search radius for finding parties in kilometers */
   PARTIES_SEARCH_RADIUS: 10,
-  /** Maximum number of attendees allowed per party */
   MAX_ATTENDEES: 500,
-  /** Number of items per page for pagination */
-  PAGINATION_LIMIT: 10,
+  MESSAGE_HISTORY_LIMIT: 50,
+  PHOTO_PAGINATION_LIMIT: 10,
+  PARTY_PAGINATION_LIMIT: 10,
+  IMAGE_MAX_WIDTH: 1080,
+  IMAGE_QUALITY: 0.9,
 } as const;
 
-/**
- * Validation rules and constraints
- */
 export const VALIDATION = {
-  /** Minimum username length */
   USERNAME_MIN: 3,
-  /** Minimum password length */
+  USERNAME_MAX: 20,
   PASSWORD_MIN: 8,
-  /** Maximum caption length */
+  BIO_MAX: 200,
+  PARTY_TITLE_MAX: 100,
+  PARTY_DESC_MAX: 500,
   CAPTION_MAX: 200,
+  MESSAGE_MAX: 300,
 } as const;
-

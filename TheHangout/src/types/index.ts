@@ -1,136 +1,154 @@
 /**
- * User statistics object
+ * Complete TypeScript type definitions for The Hangout
  */
-export interface UserStats {
-  /** Number of friends the user has */
+
+export type User = {
+  id: string;
+  email: string;
+  username: string;
+  avatar_url: string | null;
+  bio: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
   friend_count: number;
-  /** Number of parties the user has attended */
   parties_attended: number;
-  /** Number of photos the user has posted */
+  photos_posted: number;
+  last_location_lat: number | null;
+  last_location_lng: number | null;
+  privacy_setting: 'public' | 'friends_only' | 'private';
+  is_blocked_by_list: string[];
+  deleted_at: Date | string | null;
+  last_seen_at: Date | string | null;
+  badges?: Achievement[];
+};
+
+export type Party = {
+  id: string;
+  created_by: string;
+  title: string;
+  description: string | null;
+  latitude: number;
+  longitude: number;
+  address: string | null;
+  photo_url: string | null;
+  thumbnail_url?: string | null;
+  attendee_count: number;
+  max_attendees: number | null;
+  status: 'active' | 'ended' | 'archived';
+  created_at: Date | string;
+  updated_at: Date | string;
+  ended_at: Date | string | null;
+  last_activity_at: Date | string;
+  is_trending: boolean;
+  view_count: number;
+  engagement_score: number;
+  tags: string[];
+  vibe: 'chill' | 'lit' | 'exclusive' | 'casual' | 'banger' | null;
+  creator?: User;
+  attendees?: User[];
+  photos?: Photo[];
+};
+
+export type PartyAttendee = {
+  id: string;
+  party_id: string;
+  user_id: string;
+  joined_at: Date | string;
+  status: 'going' | 'interested' | 'maybe';
+  user?: User;
+};
+
+export type Photo = {
+  id: string;
+  party_id: string;
+  user_id: string;
+  photo_url: string;
+  thumbnail_url: string | null;
+  caption: string | null;
+  likes: number;
+  comment_count: number;
+  created_at: Date | string;
+  updated_at: Date | string;
+  deleted_at: Date | string | null;
+  is_featured: boolean;
+  blur_hash?: string | null;
+  user?: User;
+  comments?: Comment[];
+  is_liked_by_current_user?: boolean;
+};
+
+export type Comment = {
+  id: string;
+  photo_id: string;
+  user_id: string;
+  text: string;
+  created_at: Date | string;
+  deleted_at: Date | string | null;
+  edited_at: Date | string | null;
+  user?: User;
+};
+
+export type Friend = {
+  id: string;
+  user_id: string;
+  friend_id: string;
+  status: 'pending' | 'accepted' | 'blocked';
+  created_at: Date | string;
+  updated_at: Date | string;
+  friend?: User;
+};
+
+export type Message = {
+  id: string;
+  party_id: string;
+  user_id: string;
+  text: string;
+  created_at: Date | string;
+  deleted_at: Date | string | null;
+  is_read: boolean;
+  user?: User;
+};
+
+export type Achievement = {
+  id: string;
+  user_id: string;
+  achievement_type: 'party_creator' | 'social_butterfly' | 'photo_pro' | 'social_legend' | 'early_adopter' | 'night_owl' | 'local_legend';
+  unlocked_at: Date | string;
+  progress_data?: Record<string, any>;
+};
+
+export type Location = {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  timestamp: Date | string;
+};
+
+export type UserPreferences = {
+  id: string;
+  user_id: string;
+  notifications_enabled: boolean;
+  location_sharing: boolean;
+  private_mode: boolean;
+  theme: 'dark' | 'light' | 'auto';
+  language: string;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
+export type ApiResponse<T> =
+  | {
+      data: T;
+      error: null;
+    }
+  | {
+      data: null;
+      error: string;
+    };
+
+// Legacy types for backward compatibility
+export interface UserStats {
+  friend_count: number;
+  parties_attended: number;
   photos_posted: number;
 }
-
-/**
- * User profile information
- */
-export interface User {
-  /** Unique identifier for the user */
-  id: string;
-  /** User's email address */
-  email: string;
-  /** User's unique username */
-  username: string;
-  /** URL to the user's avatar image */
-  avatar_url: string | null;
-  /** User's bio text (max 200 characters) */
-  bio: string | null;
-  /** User's statistics and activity metrics */
-  stats: UserStats;
-}
-
-/**
- * Geographic location coordinates
- */
-export interface Location {
-  /** Latitude coordinate */
-  latitude: number;
-  /** Longitude coordinate */
-  longitude: number;
-  /** Location accuracy in meters (optional) */
-  accuracy?: number;
-}
-
-/**
- * Party information
- */
-export interface Party {
-  /** Unique identifier for the party */
-  id: string;
-  /** ID of the user who created the party */
-  created_by: string;
-  /** Party title */
-  title: string;
-  /** Party description */
-  description: string | null;
-  /** Geographic location of the party */
-  location: Location;
-  /** URL to the party's photo */
-  photo: string | null;
-  /** Number of attendees */
-  attendees: number;
-}
-
-/**
- * Photo information
- */
-export interface Photo {
-  /** Unique identifier for the photo */
-  id: string;
-  /** ID of the party this photo belongs to */
-  party_id: string;
-  /** ID of the user who posted the photo */
-  user_id: string;
-  /** URL to the photo */
-  photo_url: string;
-  /** Photo caption */
-  caption: string | null;
-  /** Number of likes the photo has received */
-  likes: number;
-}
-
-/**
- * Comment on a photo
- */
-export interface Comment {
-  /** Unique identifier for the comment */
-  id: string;
-  /** ID of the photo this comment belongs to */
-  photo_id: string;
-  /** ID of the user who made the comment */
-  user_id: string;
-  /** Comment text content */
-  text: string;
-}
-
-/**
- * Friend relationship
- */
-export interface Friend {
-  /** Unique identifier for the friendship */
-  id: string;
-  /** ID of the user who initiated the friendship */
-  user_id: string;
-  /** ID of the friend */
-  friend_id: string;
-  /** Status of the friendship: 'pending', 'accepted', 'blocked' */
-  status: 'pending' | 'accepted' | 'blocked';
-}
-
-/**
- * Real-time message in a party chat
- */
-export interface Message {
-  /** Unique identifier for the message */
-  id: string;
-  /** ID of the party this message belongs to */
-  party_id: string;
-  /** ID of the user who sent the message */
-  user_id: string;
-  /** Message text content */
-  text: string;
-}
-
-/**
- * User achievement
- */
-export interface Achievement {
-  /** Unique identifier for the achievement */
-  id: string;
-  /** ID of the user who unlocked the achievement */
-  user_id: string;
-  /** Type of achievement (e.g., 'first_party', 'social_butterfly', etc.) */
-  achievement_type: string;
-  /** Timestamp when the achievement was unlocked */
-  unlocked_at: Date | string;
-}
-
