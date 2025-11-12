@@ -1,0 +1,3 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -workspace /Users/henryvantieghem/thehangoutparties/TheHangout/ios/TheHangout.xcworkspace -configuration Debug -scheme TheHangout -destination id=EF32CC45-CCBA-4738-867A-8E77513C5834
+

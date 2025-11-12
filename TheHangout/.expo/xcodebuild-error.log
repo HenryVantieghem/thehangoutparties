@@ -1,0 +1,6 @@
+2025-11-12 14:36:12.135 xcodebuild[58998:13285877] Writing error result bundle to /var/folders/ch/hsqjc3js0jb7h7k_k9x7zf8h0000gn/T/ResultBundle_2025-12-11_14-36-0012.xcresult
+xcodebuild: error: Unable to find a destination matching the provided destination specifier:
+		{ id:EF32CC45-CCBA-4738-867A-8E77513C5834 }
+
+	Ineligible destinations for the "TheHangout" scheme:
+		{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device, error:iOS 26.1 is not installed. Please download and install the platform from Xcode > Settings > Components. }
