@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -18,10 +18,17 @@ import * as Location from 'expo-location';
 
 import { PartyCard } from '../components/PartyCard';
 import { EmptyState } from '../components/EmptyState';
+import { ComponentErrorBoundary } from '../components/ErrorBoundary';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '../constants';
 import { usePartyStore, useLocationStore } from '../stores';
 import { Party } from '../types';
 import { mockParties } from '../utils';
+import { useErrorHandler, withErrorHandling, ErrorPatterns } from '../utils/errorHandler';
+import { 
+  createHeaderAccessibility, 
+  createFormFieldAccessibility, 
+  createNavigationAccessibility 
+} from '../utils/accessibility';
 
 const { width } = Dimensions.get('window');
 
@@ -29,11 +36,13 @@ export function DiscoverScreen() {
   const navigation = useNavigation();
   const { parties, setParties, loading, setLoading } = usePartyStore();
   const { currentLocation, startTracking } = useLocationStore();
+  const { handleError } = useErrorHandler();
   
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [filter, setFilter] = useState<'all' | 'trending' | 'nearby'>('all');
+  const [error, setError] = useState<string | null>(null);
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -43,7 +52,7 @@ export function DiscoverScreen() {
     requestLocationAndTrack();
     
     // Entrance animation
-    Animated.parallel([
+    const animationCleanup = Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 300,
@@ -55,46 +64,109 @@ export function DiscoverScreen() {
         friction: 7,
         useNativeDriver: true,
       }),
-    ]).start();
-  }, []);
+    ]);
+    
+    animationCleanup.start();
 
-  const requestLocationAndTrack = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status === 'granted') {
-      startTracking();
+    // Cleanup function
+    return () => {
+      animationCleanup.stop();
+      fadeAnim.setValue(0);
+      slideAnim.setValue(50);
+    };
+  }, [fadeAnim, slideAnim]);
+
+  const requestLocationAndTrack = withErrorHandling(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        await startTracking();
+      } else {
+        throw ErrorPatterns.FORBIDDEN;
+      }
+    } catch (locationError) {
+      await handleError(locationError, {
+        context: 'DiscoverScreen.requestLocationAndTrack',
+        showAlert: false, // Don't show alert for location permission
+        metadata: { screen: 'Discover' },
+      });
     }
-  };
+  }, {
+    context: 'DiscoverScreen.requestLocationAndTrack',
+    showAlert: false,
+    fallbackValue: undefined,
+  });
 
-  const loadInitialParties = async () => {
+  const loadInitialParties = withErrorHandling(async () => {
     setLoading(true);
+    setError(null);
+    
     try {
       // Simulate API call delay
       await new Promise(resolve => setTimeout(resolve, 1000));
       
+      // Simulate potential network error
+      if (Math.random() < 0.1) { // 10% chance of error for testing
+        throw new Error('Network request failed');
+      }
+      
       // Load mock parties for now
       setParties(mockParties.slice(0, 10));
       setHasMore(mockParties.length > 10);
-    } catch (error) {
-      console.error('Failed to load parties:', error);
+    } catch (loadError) {
+      setError('Failed to load parties');
+      await handleError(loadError, {
+        context: 'DiscoverScreen.loadInitialParties',
+        metadata: { 
+          screen: 'Discover',
+          partiesCount: parties.length,
+          filter 
+        },
+        retryable: true,
+        onRetry: loadInitialParties,
+      });
     } finally {
       setLoading(false);
     }
-  };
+  }, {
+    context: 'DiscoverScreen.loadInitialParties',
+    fallbackValue: undefined,
+  });
 
-  const handleRefresh = useCallback(async () => {
+  const handleRefresh = useCallback(withErrorHandling(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setRefreshing(true);
+    setError(null);
     
     try {
       await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Simulate potential network error
+      if (Math.random() < 0.05) { // 5% chance of error for testing
+        throw ErrorPatterns.NETWORK_TIMEOUT;
+      }
+      
       setParties(mockParties.slice(0, 10));
       setHasMore(mockParties.length > 10);
-    } catch (error) {
-      console.error('Failed to refresh:', error);
+    } catch (refreshError) {
+      setError('Failed to refresh parties');
+      await handleError(refreshError, {
+        context: 'DiscoverScreen.handleRefresh',
+        metadata: { 
+          screen: 'Discover',
+          filter,
+          partiesCount: parties.length 
+        },
+        retryable: true,
+        onRetry: handleRefresh,
+      });
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, {
+    context: 'DiscoverScreen.handleRefresh',
+    fallbackValue: undefined,
+  }), [filter, parties.length, handleError]);
 
   const handleLoadMore = useCallback(async () => {
     if (loadingMore || !hasMore || parties.length === 0) return;
@@ -162,65 +234,97 @@ export function DiscoverScreen() {
     }
   }, [currentLocation]);
 
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <Text style={styles.title}>Discover</Text>
-      <Text style={styles.subtitle}>
-        {currentLocation ? '📍 Parties near you' : 'Find parties happening now'}
-      </Text>
-      
-      {/* Filter Pills */}
-      <View style={styles.filterContainer}>
-        {(['all', 'trending', 'nearby'] as const).map((filterType) => (
-          <TouchableOpacity
-            key={filterType}
-            onPress={() => handleFilterChange(filterType)}
-            style={[
-              styles.filterPill,
-              filter === filterType && styles.filterPillActive,
-            ]}
-          >
-            <Text
+  const renderHeader = useMemo(() => (
+    <ComponentErrorBoundary componentName="DiscoverHeader">
+      <View style={styles.header}>
+        <Text 
+          style={styles.title}
+          {...createHeaderAccessibility('Discover', 1)}
+        >
+          Discover
+        </Text>
+        <Text 
+          style={styles.subtitle}
+          {...createFormFieldAccessibility(
+            currentLocation ? 'Parties near you' : 'Find parties happening now',
+            undefined,
+            false
+          )}
+        >
+          {currentLocation ? '📍 Parties near you' : 'Find parties happening now'}
+        </Text>
+        
+        {/* Filter Pills with accessibility */}
+        <View 
+          style={styles.filterContainer}
+          {...createNavigationAccessibility('Filter options')}
+          accessibilityRole="tablist"
+        >
+          {(['all', 'trending', 'nearby'] as const).map((filterType, index) => (
+            <TouchableOpacity
+              key={filterType}
+              onPress={() => handleFilterChange(filterType)}
               style={[
-                styles.filterPillText,
-                filter === filterType && styles.filterPillTextActive,
+                styles.filterPill,
+                filter === filterType && styles.filterPillActive,
               ]}
+              {...createNavigationAccessibility(
+                `${filterType === 'all' ? 'All parties' : filterType === 'trending' ? 'Trending parties' : 'Nearby parties'} filter`,
+                filter === filterType,
+                index,
+                3
+              )}
+              accessible={true}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: filter === filterType }}
+              accessibilityLabel={`${filterType === 'all' ? 'All parties' : filterType === 'trending' ? 'Trending parties' : 'Nearby parties'} filter`}
+              accessibilityHint={filter === filterType ? 'Currently selected' : 'Tap to filter parties'}
             >
-              {filterType === 'all' && '🎉 All'}
-              {filterType === 'trending' && '🔥 Trending'}
-              {filterType === 'nearby' && '📍 Nearby'}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[
+                  styles.filterPillText,
+                  filter === filterType && styles.filterPillTextActive,
+                ]}
+                accessible={false} // Parent handles accessibility
+              >
+                {filterType === 'all' && '🎉 All'}
+                {filterType === 'trending' && '🔥 Trending'}
+                {filterType === 'nearby' && '📍 Nearby'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
-    </View>
-  );
+    </ComponentErrorBoundary>
+  ), [currentLocation, filter, handleFilterChange]);
 
-  const renderParty = ({ item, index }: { item: Party; index: number }) => (
-    <Animated.View
-      style={{
-        opacity: fadeAnim,
-        transform: [
-          {
-            translateY: slideAnim.interpolate({
-              inputRange: [0, 50],
-              outputRange: [0, 50 + index * 10],
-            }),
-          },
-        ],
-      }}
-    >
-      <PartyCard
-        party={item}
-        onPress={() => handlePartyPress(item)}
-        onLike={() => handleLikeParty(item.id)}
-        onJoin={() => handleJoinParty(item.id)}
-        currentUserId="current-user-id"
-      />
-    </Animated.View>
-  );
+  const renderParty = useCallback(({ item, index }: { item: Party; index: number }) => (
+    <ComponentErrorBoundary componentName={`PartyCard-${item.id}`}>
+      <Animated.View
+        style={{
+          opacity: fadeAnim,
+          transform: [
+            {
+              translateY: slideAnim.interpolate({
+                inputRange: [0, 50],
+                outputRange: [0, 50 + index * 10],
+              }),
+            },
+          ],
+        }}
+      >
+        <PartyCard
+          party={item}
+          onPress={() => handlePartyPress(item)}
+          onLike={() => handleLikeParty(item.id)}
+          onJoin={() => handleJoinParty(item.id)}
+          currentUserId="current-user-id"
+        />
+      </Animated.View>
+    </ComponentErrorBoundary>
+  ), [fadeAnim, slideAnim, handlePartyPress, handleLikeParty, handleJoinParty]);
 
-  const renderFooter = () => {
+  const renderFooter = useCallback(() => {
     if (!loadingMore) return null;
     
     return (
@@ -229,17 +333,35 @@ export function DiscoverScreen() {
         <Text style={styles.loadingMoreText}>Loading more parties...</Text>
       </View>
     );
-  };
+  }, [loadingMore]);
 
-  const renderEmpty = () => (
-    <EmptyState
-      icon="calendar-outline"
-      title="No parties yet"
-      message="Be the first to start a party in your area!"
-      actionText="Create Party"
-      onAction={() => navigation.navigate('CreateParty' as never)}
-    />
-  );
+  const renderEmpty = useCallback(() => {
+    if (error) {
+      return (
+        <ComponentErrorBoundary componentName="EmptyState">
+          <EmptyState
+            icon="alert-circle-outline"
+            title="Failed to load parties"
+            message={error}
+            actionText="Try Again"
+            onAction={loadInitialParties}
+          />
+        </ComponentErrorBoundary>
+      );
+    }
+
+    return (
+      <ComponentErrorBoundary componentName="EmptyState">
+        <EmptyState
+          icon="calendar-outline"
+          title="No parties yet"
+          message="Be the first to start a party in your area!"
+          actionText="Create Party"
+          onAction={() => navigation.navigate('CreateParty' as never)}
+        />
+      </ComponentErrorBoundary>
+    );
+  }, [error, loadInitialParties, navigation]);
 
   if (loading && parties.length === 0) {
     return (
@@ -257,7 +379,7 @@ export function DiscoverScreen() {
       <FlatList
         data={parties}
         renderItem={renderParty}
-        keyExtractor={(item) => item.id}
+        keyExtractor={useCallback((item: Party) => item.id, [])}
         ListHeaderComponent={renderHeader}
         ListFooterComponent={renderFooter}
         ListEmptyComponent={renderEmpty}
@@ -272,11 +394,20 @@ export function DiscoverScreen() {
           />
         }
         onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
+        onEndReachedThreshold={0.3}
         removeClippedSubviews={true}
-        maxToRenderPerBatch={5}
-        windowSize={10}
-        initialNumToRender={5}
+        maxToRenderPerBatch={3}
+        windowSize={8}
+        initialNumToRender={3}
+        updateCellsBatchingPeriod={100}
+        getItemLayout={useCallback(
+          (data: any, index: number) => ({
+            length: 320, // Estimated height of PartyCard
+            offset: 320 * index,
+            index,
+          }),
+          []
+        )}
       />
       
       {/* Floating Map Button */}

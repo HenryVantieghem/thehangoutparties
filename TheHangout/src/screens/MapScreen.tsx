@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -20,17 +20,57 @@ import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../constants';
 import { usePartyStore, useLocationStore } from '../stores';
 import { Party } from '../types';
 import { mockParties } from '../utils';
+import { ComponentErrorBoundary } from '../components/ErrorBoundary';
+import { usePerformance } from '../hooks/usePerformance';
+import { useLoading, useAsyncOperation } from '../hooks/useLoading';
+import { useLoadingContext, usePageLoading, useApiLoading } from '../providers/LoadingProvider';
+import { LoadingSpinner, ErrorState, EmptyState } from '../components/ui/LoadingComponents';
+import { MapSkeleton, PartyCardSkeleton } from '../components/skeletons/SkeletonComponents';
 
 const { width, height } = Dimensions.get('window');
 
 export function MapScreen() {
-  const { parties, setParties } = usePartyStore();
-  const { currentLocation, startTracking } = useLocationStore();
+  const { measureAsyncOperation, measureSyncOperation, logInteraction } = usePerformance({
+    componentName: 'MapScreen',
+    trackRenders: true,
+    trackInteractions: true,
+  });
+
+  // Loading state management
+  const loadingContext = useLoadingContext();
+  const pageLoading = usePageLoading('map');
+  const apiLoading = useApiLoading();
+  
+  // Map loading states
+  const locationLoading = useLoading({
+    key: 'location',
+    description: 'Getting your location...',
+    type: 'data',
+    priority: 'high',
+  });
+  
+  const partiesLoading = useAsyncOperation(null, [], {
+    key: 'parties',
+    description: 'Loading nearby parties...',
+    type: 'api',
+    priority: 'medium',
+    immediate: false,
+  });
+
+  // Store state
+  const { 
+    nearbyParties, 
+    loading: partyStoreLoading, 
+    error: partyError,
+    findNearbyParties 
+  } = usePartyStore();
+  const { currentLocation, loading: locationStoreLoading, startTracking } = useLocationStore();
   
   const mapRef = useRef<MapView>(null);
   const [selectedParty, setSelectedParty] = useState<Party | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [showUserLocation, setShowUserLocation] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
   
   const defaultRegion: Region = {
     latitude: 40.7128,
@@ -39,14 +79,32 @@ export function MapScreen() {
     longitudeDelta: 0.05,
   };
 
+  // Initialize map and load data
   useEffect(() => {
-    // Load parties if not already loaded
-    if (parties.length === 0) {
-      setParties(mockParties);
-    }
-    
-    // Start location tracking
-    requestLocationPermission();
+    const initializeMap = async () => {
+      try {
+        pageLoading.startLoading('Initializing map...');
+        
+        // Get user location first
+        locationLoading.start('Getting your location...');
+        await measureAsyncOperation('getLocation', async () => {
+          await requestLocationPermission();
+        });
+        locationLoading.stop(true);
+        
+        pageLoading.stopLoading();
+      } catch (error) {
+        console.error('Failed to initialize map:', error);
+        locationLoading.stop(false, {
+          message: 'Failed to get your location',
+          type: 'network',
+          retry: initializeMap,
+        });
+        pageLoading.stopLoading();
+      }
+    };
+
+    initializeMap();
   }, []);
 
   useEffect(() => {
@@ -60,6 +118,30 @@ export function MapScreen() {
       }, 1000);
     }
   }, [currentLocation]);
+
+  // Load nearby parties when location is available
+  useEffect(() => {
+    if (currentLocation && mapReady) {
+      const loadNearbyParties = async () => {
+        try {
+          await partiesLoading.execute(async () => {
+            return await measureAsyncOperation('loadNearbyParties', async () => {
+              await findNearbyParties({
+                latitude: currentLocation.latitude,
+                longitude: currentLocation.longitude,
+                radius: 10,
+              });
+              return nearbyParties;
+            });
+          });
+        } catch (error) {
+          console.error('Failed to load nearby parties:', error);
+        }
+      };
+
+      loadNearbyParties();
+    }
+  }, [currentLocation, mapReady, findNearbyParties, partiesLoading, measureAsyncOperation, nearbyParties]);
 
   const requestLocationPermission = async () => {
     try {
@@ -79,11 +161,13 @@ export function MapScreen() {
   };
 
   const handleMarkerPress = useCallback((party: Party) => {
+    logInteraction('marker_press', { partyId: party.id, vibe: party.vibe });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedParty(party);
-  }, []);
+  }, [logInteraction]);
 
   const handleMyLocationPress = useCallback(() => {
+    logInteraction('my_location_press', { hasLocation: !!currentLocation });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (currentLocation && mapRef.current) {
       mapRef.current.animateToRegion({
@@ -95,21 +179,23 @@ export function MapScreen() {
     } else {
       requestLocationPermission();
     }
-  }, [currentLocation]);
+  }, [currentLocation, logInteraction]);
 
   const handleMapTypeToggle = useCallback(() => {
+    logInteraction('map_type_toggle', { currentType: mapType });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setMapType(mapType === 'standard' ? 'satellite' : 'standard');
-  }, [mapType]);
+  }, [mapType, logInteraction]);
 
-  const getMarkerColor = (party: Party) => {
+  const getMarkerColor = useCallback((party: Party) => {
     if (party.is_trending) return COLORS.pink;
     if (party.vibe === 'lit' || party.vibe === 'banger') return COLORS.orange;
     return COLORS.cyan;
-  };
+  }, []);
 
-  const renderMarker = (party: Party) => (
-    <Marker
+  const renderMarker = useCallback((party: Party) => (
+    <ComponentErrorBoundary componentName={`MapMarker-${party.id}`}>
+      <Marker
       key={party.id}
       coordinate={{
         latitude: party.latitude,
@@ -172,7 +258,47 @@ export function MapScreen() {
         </BlurView>
       </Callout>
     </Marker>
-  );
+    </ComponentErrorBoundary>
+  ), [handleMarkerPress, getMarkerColor]);
+
+  const handleMapReady = useCallback(() => {
+    logInteraction('map_ready');
+    setMapReady(true);
+  }, [logInteraction]);
+
+  const isLoading = pageLoading.isLoading || locationLoading.isLoading || partiesLoading.isLoading || partyStoreLoading;
+  const hasError = locationLoading.error || partiesLoading.error || partyError;
+
+  // Show loading skeleton while map is initializing
+  if (!mapReady && isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <MapSkeleton style={styles.map} />
+        {/* Controls skeleton */}
+        <View style={styles.controls}>
+          <View style={[styles.controlButton, { backgroundColor: COLORS.gray800 }]} />
+          <View style={[styles.controlButton, { backgroundColor: COLORS.gray800 }]} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show error state if location access failed
+  if (hasError && !currentLocation) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ErrorState
+          error={hasError}
+          onRetry={() => {
+            locationLoading.reset();
+            partiesLoading.reset();
+            requestLocationPermission();
+          }}
+          style={styles.errorContainer}
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -180,13 +306,29 @@ export function MapScreen() {
         ref={mapRef}
         style={styles.map}
         mapType={mapType}
-        initialRegion={defaultRegion}
+        initialRegion={currentLocation ? {
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        } : defaultRegion}
         showsUserLocation={showUserLocation}
         showsMyLocationButton={false}
         showsCompass={false}
         toolbarEnabled={false}
+        onMapReady={handleMapReady}
       >
-        {parties.map(renderMarker)}
+        {(nearbyParties.length > 0 ? nearbyParties : []).map(renderMarker)}
+        
+        {/* Loading indicator overlay for parties */}
+        {partiesLoading.isLoading && (
+          <View style={styles.mapLoadingOverlay}>
+            <LoadingSpinner size="large" color={COLORS.primary} />
+            <Text style={styles.mapLoadingText}>
+              {partiesLoading.operationId ? 'Loading nearby parties...' : 'Searching...'}
+            </Text>
+          </View>
+        )}
       </MapView>
 
       {/* Controls */}
@@ -445,5 +587,28 @@ const styles = StyleSheet.create({
     color: COLORS.gray400,
     fontWeight: '500' as const,
     flex: 1,
+  },
+  // Loading states
+  mapLoadingOverlay: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  mapLoadingText: {
+    ...TYPOGRAPHY.caption1,
+    color: COLORS.white,
+    fontWeight: '500' as const,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: SPACING.xl,
   },
 });

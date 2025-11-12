@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   Image,
   StyleSheet,
-  Dimensions,
   Platform,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
@@ -15,9 +14,16 @@ import * as Haptics from 'expo-haptics';
 
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../constants';
 import { Party } from '../types';
-
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = width - SPACING.lg * 2;
+import { 
+  useResponsive, 
+  createResponsiveStyle, 
+  getImageDimensions 
+} from '../utils/responsive';
+import { 
+  createListItemAccessibility, 
+  createButtonAccessibility,
+  createImageAccessibility 
+} from '../utils/accessibility';
 
 export interface PartyCardProps {
   party: Party;
@@ -30,15 +36,38 @@ export interface PartyCardProps {
 export function PartyCard({ party, onPress, onLike, onJoin, currentUserId }: PartyCardProps) {
   const [isLiked, setIsLiked] = useState(false); // Would check user likes
   const [isJoined, setIsJoined] = useState(party.attendees?.some(a => a.id === currentUserId) || false);
+  
+  // Get responsive values
+  const {
+    spacing,
+    radius,
+    typography,
+    touchTargets,
+    isTablet,
+    isLandscape,
+    getColumnWidth,
+    getImageDimensions,
+    width: screenWidth,
+  } = useResponsive();
 
-  const handleLike = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  // Calculate responsive card dimensions
+  const cardWidth = isTablet 
+    ? getColumnWidth(isLandscape ? 2 : 1) // 2 columns landscape, 1 portrait on tablet
+    : screenWidth - (spacing.lg * 2); // Full width minus margins on phone
+
+  const imageAspectRatio = 16 / 9; // Standard aspect ratio
+  const imageHeight = isTablet ? 160 : 200; // Smaller images on tablet
+
+  const handleLike = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsLiked(!isLiked);
     onLike();
   };
 
-  const handleJoin = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  const handleJoin = async () => {
+    await Haptics.impactAsync(
+      isTablet ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Heavy
+    );
     setIsJoined(!isJoined);
     onJoin();
   };
@@ -67,43 +96,174 @@ export function PartyCard({ party, onPress, onLike, onJoin, currentUserId }: Par
     return `${distance.toFixed(1)} mi away`;
   };
 
+  // Create responsive styles
+  const responsiveStyles = createResponsiveStyle({
+    default: {
+      container: {
+        width: cardWidth,
+        marginHorizontal: spacing.lg,
+        marginVertical: spacing.sm,
+      },
+      blurContainer: {
+        borderRadius: radius.xl,
+      },
+      gradient: {
+        borderRadius: radius.xl,
+      },
+      imageContainer: {
+        height: imageHeight,
+      },
+      partyImage: {
+        borderTopLeftRadius: radius.xl,
+        borderTopRightRadius: radius.xl,
+      },
+      liveIndicator: {
+        top: spacing.md,
+        left: spacing.md,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.xs,
+        borderRadius: radius.sm,
+      },
+      liveDot: {
+        marginRight: spacing.xs,
+      },
+      trendingBadge: {
+        top: spacing.md,
+        right: spacing.md + 44,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.xs,
+        borderRadius: radius.sm,
+      },
+      trendingText: {
+        marginLeft: spacing.xs,
+      },
+      likeButton: {
+        top: spacing.md,
+        right: spacing.md,
+      },
+      content: {
+        padding: spacing.lg,
+      },
+      titleRow: {
+        marginBottom: spacing.sm,
+      },
+      title: {
+        marginRight: spacing.sm,
+      },
+      hostAvatar: {
+        marginRight: spacing.xs,
+      },
+      description: {
+        marginBottom: spacing.md,
+      },
+      detailsRow: {
+        marginBottom: spacing.md,
+      },
+      detailText: {
+        marginLeft: spacing.xs,
+      },
+      tagsContainer: {
+        marginBottom: spacing.md,
+      },
+      tag: {
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.xs,
+        borderRadius: radius.sm,
+        marginRight: spacing.xs,
+        marginBottom: spacing.xs,
+      },
+      joinButton: {
+        paddingHorizontal: spacing.lg,
+        paddingVertical: spacing.sm,
+        borderRadius: radius.md,
+        marginRight: spacing.md,
+      },
+      joinButtonText: {
+        marginLeft: spacing.xs,
+      },
+      statItem: {
+        marginLeft: spacing.md,
+      },
+      statText: {
+        marginLeft: spacing.xs,
+      },
+    },
+    tablet: {
+      container: {
+        marginHorizontal: spacing.md,
+        marginVertical: spacing.md,
+      },
+      content: {
+        padding: spacing.xl,
+      },
+    },
+    landscape: {
+      imageContainer: {
+        height: isTablet ? 140 : 180, // Smaller images in landscape
+      },
+    },
+  });
+
+  // Accessibility configuration
+  const cardAccessibility = createListItemAccessibility(
+    `${party.title} party`,
+    `${party.description}, ${party.attendee_count || 0} attendees`,
+    undefined,
+    true
+  );
+
+  const likeButtonAccessibility = createButtonAccessibility(
+    `${isLiked ? 'Unlike' : 'Like'} ${party.title}`,
+    isLiked ? 'Remove from favorites' : 'Add to favorites',
+    false,
+    isLiked
+  );
+
+  const joinButtonAccessibility = createButtonAccessibility(
+    `${isJoined ? 'Leave' : 'Join'} ${party.title}`,
+    isJoined ? 'Leave this party' : 'Join this party',
+    false,
+    isJoined
+  );
+
   return (
     <TouchableOpacity
-      style={styles.container}
+      style={[styles.container, responsiveStyles.container]}
       onPress={onPress}
       activeOpacity={0.9}
+      {...cardAccessibility}
     >
-      <BlurView intensity={20} style={styles.blurContainer}>
+      <BlurView intensity={20} style={[styles.blurContainer, responsiveStyles.blurContainer]}>
         <LinearGradient
           colors={['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']}
-          style={styles.gradient}
+          style={[styles.gradient, responsiveStyles.gradient]}
         >
           {/* Header Image */}
-          <View style={styles.imageContainer}>
+          <View style={[styles.imageContainer, responsiveStyles.imageContainer]}>
             <Image
               source={{ uri: party.photo_url || 'https://picsum.photos/400/200' }}
-              style={styles.partyImage}
+              style={[styles.partyImage, responsiveStyles.partyImage]}
             />
             
             {/* Live Indicator */}
             {getTimeStatus().includes('Live') && (
-              <View style={styles.liveIndicator}>
-                <View style={styles.liveDot} />
+              <View style={[styles.liveIndicator, responsiveStyles.liveIndicator]}>
+                <View style={[styles.liveDot, responsiveStyles.liveDot]} />
                 <Text style={styles.liveText}>LIVE</Text>
               </View>
             )}
             
             {/* Trending Badge */}
             {party.is_trending && (
-              <View style={styles.trendingBadge}>
+              <View style={[styles.trendingBadge, responsiveStyles.trendingBadge]}>
                 <Ionicons name="trending-up" size={16} color={COLORS.white} />
-                <Text style={styles.trendingText}>Trending</Text>
+                <Text style={[styles.trendingText, responsiveStyles.trendingText]}>Trending</Text>
               </View>
             )}
             
             {/* Like Button */}
             <TouchableOpacity
-              style={[styles.likeButton, isLiked && styles.likeButtonActive]}
+              style={[styles.likeButton, responsiveStyles.likeButton, isLiked && styles.likeButtonActive]}
               onPress={handleLike}
               activeOpacity={0.8}
             >
@@ -116,16 +276,16 @@ export function PartyCard({ party, onPress, onLike, onJoin, currentUserId }: Par
           </View>
 
           {/* Content */}
-          <View style={styles.content}>
+          <View style={[styles.content, responsiveStyles.content]}>
             {/* Title and Host */}
-            <View style={styles.titleRow}>
-              <Text style={styles.title} numberOfLines={2}>
+            <View style={[styles.titleRow, responsiveStyles.titleRow]}>
+              <Text style={[styles.title, responsiveStyles.title]} numberOfLines={2}>
                 {party.title}
               </Text>
               <View style={styles.hostInfo}>
                 <Image
                   source={{ uri: party.creator?.avatar_url || 'https://picsum.photos/32/32' }}
-                  style={styles.hostAvatar}
+                  style={[styles.hostAvatar, responsiveStyles.hostAvatar]}
                 />
                 <Text style={styles.hostName} numberOfLines={1}>
                   {party.creator?.username}
@@ -134,25 +294,25 @@ export function PartyCard({ party, onPress, onLike, onJoin, currentUserId }: Par
             </View>
 
             {/* Description */}
-            <Text style={styles.description} numberOfLines={2}>
+            <Text style={[styles.description, responsiveStyles.description]} numberOfLines={2}>
               {party.description}
             </Text>
 
             {/* Details Row */}
-            <View style={styles.detailsRow}>
+            <View style={[styles.detailsRow, responsiveStyles.detailsRow]}>
               <View style={styles.detailItem}>
                 <Ionicons name="time-outline" size={14} color={COLORS.gray400} />
-                <Text style={styles.detailText}>{getTimeStatus()}</Text>
+                <Text style={[styles.detailText, responsiveStyles.detailText]}>{getTimeStatus()}</Text>
               </View>
               
               <View style={styles.detailItem}>
                 <Ionicons name="location-outline" size={14} color={COLORS.gray400} />
-                <Text style={styles.detailText}>{getDistance()}</Text>
+                <Text style={[styles.detailText, responsiveStyles.detailText]}>{getDistance()}</Text>
               </View>
               
               <View style={styles.detailItem}>
                 <Ionicons name="people-outline" size={14} color={COLORS.gray400} />
-                <Text style={styles.detailText}>
+                <Text style={[styles.detailText, responsiveStyles.detailText]}>
                   {party.attendee_count || 0}/{party.max_attendees || '∞'}
                 </Text>
               </View>
@@ -160,9 +320,9 @@ export function PartyCard({ party, onPress, onLike, onJoin, currentUserId }: Par
 
             {/* Tags */}
             {party.tags && party.tags.length > 0 && (
-              <View style={styles.tagsContainer}>
+              <View style={[styles.tagsContainer, responsiveStyles.tagsContainer]}>
                 {party.tags.slice(0, 3).map((tag, index) => (
-                  <View key={index} style={styles.tag}>
+                  <View key={index} style={[styles.tag, responsiveStyles.tag]}>
                     <Text style={styles.tagText}>{tag}</Text>
                   </View>
                 ))}
@@ -175,7 +335,7 @@ export function PartyCard({ party, onPress, onLike, onJoin, currentUserId }: Par
             {/* Action Row */}
             <View style={styles.actionRow}>
               <TouchableOpacity
-                style={[styles.joinButton, isJoined && styles.joinButtonActive]}
+                style={[styles.joinButton, responsiveStyles.joinButton, isJoined && styles.joinButtonActive]}
                 onPress={handleJoin}
                 activeOpacity={0.8}
               >
@@ -184,20 +344,20 @@ export function PartyCard({ party, onPress, onLike, onJoin, currentUserId }: Par
                   size={18}
                   color={isJoined ? COLORS.dark : COLORS.white}
                 />
-                <Text style={[styles.joinButtonText, isJoined && styles.joinButtonTextActive]}>
+                <Text style={[styles.joinButtonText, responsiveStyles.joinButtonText, isJoined && styles.joinButtonTextActive]}>
                   {isJoined ? 'Joined' : 'Join Party'}
                 </Text>
               </TouchableOpacity>
 
               <View style={styles.stats}>
-                <View style={styles.statItem}>
+                <View style={[styles.statItem, responsiveStyles.statItem]}>
                   <Ionicons name="heart" size={14} color={COLORS.pink} />
-                  <Text style={styles.statText}>{Math.floor(party.engagement_score * 10)}</Text>
+                  <Text style={[styles.statText, responsiveStyles.statText]}>{Math.floor(party.engagement_score * 10)}</Text>
                 </View>
                 
-                <View style={styles.statItem}>
+                <View style={[styles.statItem, responsiveStyles.statItem]}>
                   <Ionicons name="chatbubble" size={14} color={COLORS.cyan} />
-                  <Text style={styles.statText}>{party.view_count}</Text>
+                  <Text style={[styles.statText, responsiveStyles.statText]}>{party.view_count}</Text>
                 </View>
               </View>
             </View>
@@ -210,47 +370,34 @@ export function PartyCard({ party, onPress, onLike, onJoin, currentUserId }: Par
 
 const styles = StyleSheet.create({
   container: {
-    width: CARD_WIDTH,
-    marginHorizontal: SPACING.lg,
-    marginVertical: SPACING.sm,
+    // Width handled by responsiveStyles
   },
   blurContainer: {
-    borderRadius: RADIUS.xl,
     overflow: 'hidden',
     ...SHADOWS.large,
   },
   gradient: {
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: RADIUS.xl,
   },
   imageContainer: {
     position: 'relative',
-    height: 200,
   },
   partyImage: {
     width: '100%',
     height: '100%',
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
   },
   liveIndicator: {
     position: 'absolute',
-    top: SPACING.md,
-    left: SPACING.md,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 0, 0, 0.9)',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.sm,
   },
   liveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: COLORS.white,
-    marginRight: SPACING.xs,
   },
   liveText: {
     ...TYPOGRAPHY.caption2,
@@ -259,25 +406,17 @@ const styles = StyleSheet.create({
   },
   trendingBadge: {
     position: 'absolute',
-    top: SPACING.md,
-    right: SPACING.md + 44,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 106, 0, 0.9)',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.sm,
   },
   trendingText: {
     ...TYPOGRAPHY.caption2,
     color: COLORS.white,
     fontWeight: '600' as const,
-    marginLeft: SPACING.xs,
   },
   likeButton: {
     position: 'absolute',
-    top: SPACING.md,
-    right: SPACING.md,
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -289,20 +428,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
   },
   content: {
-    padding: SPACING.lg,
+    // Padding handled by responsiveStyles
   },
   titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: SPACING.sm,
   },
   title: {
     ...TYPOGRAPHY.title2,
     color: COLORS.white,
     fontWeight: '700' as const,
     flex: 1,
-    marginRight: SPACING.sm,
   },
   hostInfo: {
     flexDirection: 'row',
@@ -313,7 +450,6 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    marginRight: SPACING.xs,
   },
   hostName: {
     ...TYPOGRAPHY.caption1,
@@ -324,13 +460,11 @@ const styles = StyleSheet.create({
   description: {
     ...TYPOGRAPHY.body,
     color: COLORS.gray300,
-    marginBottom: SPACING.md,
     lineHeight: 20,
   },
   detailsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: SPACING.md,
   },
   detailItem: {
     flexDirection: 'row',
@@ -340,24 +474,17 @@ const styles = StyleSheet.create({
   detailText: {
     ...TYPOGRAPHY.caption1,
     color: COLORS.gray400,
-    marginLeft: SPACING.xs,
     fontWeight: '500' as const,
   },
   tagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: SPACING.md,
     alignItems: 'center',
   },
   tag: {
     backgroundColor: 'rgba(0, 217, 255, 0.15)',
     borderWidth: 1,
     borderColor: 'rgba(0, 217, 255, 0.3)',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.sm,
-    marginRight: SPACING.xs,
-    marginBottom: SPACING.xs,
   },
   tagText: {
     ...TYPOGRAPHY.caption2,
@@ -378,11 +505,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.cyan,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.md,
     flex: 1,
-    marginRight: SPACING.md,
   },
   joinButtonActive: {
     backgroundColor: COLORS.white,
@@ -390,7 +513,6 @@ const styles = StyleSheet.create({
   joinButtonText: {
     ...TYPOGRAPHY.bodyBold,
     color: COLORS.white,
-    marginLeft: SPACING.xs,
     fontWeight: '600' as const,
   },
   joinButtonTextActive: {
@@ -403,12 +525,10 @@ const styles = StyleSheet.create({
   statItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: SPACING.md,
   },
   statText: {
     ...TYPOGRAPHY.caption1,
     color: COLORS.gray300,
-    marginLeft: SPACING.xs,
     fontWeight: '500' as const,
   },
 });

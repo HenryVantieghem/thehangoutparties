@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Platform, TouchableOpacity, View } from 'react-native';
+import { Platform, TouchableOpacity, View, Text } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -10,28 +10,42 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuthStore } from '../stores';
 import { COLORS, RADIUS, SPACING } from '../constants';
+import { ScreenErrorBoundary } from '../components/ErrorBoundary';
 
 // Auth Screens
-import { SignInScreen } from '../screens/auth/SignInScreen';
-import { SignUpScreen } from '../screens/auth/SignUpScreen';
-import { ResetPasswordScreen } from '../screens/auth/ResetPasswordScreen';
-import { OnboardingScreen } from '../screens/OnboardingScreen';
+import { SignInScreen as _SignInScreen } from '../screens/auth/SignInScreen';
+import { SignUpScreen as _SignUpScreen } from '../screens/auth/SignUpScreen';
+import { ResetPasswordScreen as _ResetPasswordScreen } from '../screens/auth/ResetPasswordScreen';
+import { OnboardingScreen as _OnboardingScreen } from '../screens/OnboardingScreen';
 
 // Main Screens
-import { DiscoverScreen } from '../screens/DiscoverScreen';
-import { MapScreen } from '../screens/MapScreen';
-import { CreatePartyScreen } from '../screens/CreatePartyScreen';
-import { MessagesScreen } from '../screens/MessagesScreen';
-import { ProfileScreen } from '../screens/ProfileScreen';
+import { DiscoverScreen as _DiscoverScreen } from '../screens/DiscoverScreen';
+import { MapScreen as _MapScreen } from '../screens/MapScreen';
+import { CreatePartyScreen as _CreatePartyScreen } from '../screens/CreatePartyScreen';
+import { MessagesScreen as _MessagesScreen } from '../screens/MessagesScreen';
+import { ProfileScreen as _ProfileScreen } from '../screens/ProfileScreen';
+
+// Wrap screens with error boundaries
+const SignInScreen = () => <ScreenErrorBoundary screenName="SignIn"><_SignInScreen /></ScreenErrorBoundary>;
+const SignUpScreen = () => <ScreenErrorBoundary screenName="SignUp"><_SignUpScreen /></ScreenErrorBoundary>;
+const ResetPasswordScreen = () => <ScreenErrorBoundary screenName="ResetPassword"><_ResetPasswordScreen /></ScreenErrorBoundary>;
+const OnboardingScreen = () => <ScreenErrorBoundary screenName="Onboarding"><_OnboardingScreen /></ScreenErrorBoundary>;
+const DiscoverScreen = () => <ScreenErrorBoundary screenName="Discover"><_DiscoverScreen /></ScreenErrorBoundary>;
+const MapScreen = () => <ScreenErrorBoundary screenName="Map"><_MapScreen /></ScreenErrorBoundary>;
+const CreatePartyScreen = () => <ScreenErrorBoundary screenName="CreateParty"><_CreatePartyScreen /></ScreenErrorBoundary>;
+const MessagesScreen = () => <ScreenErrorBoundary screenName="Messages"><_MessagesScreen /></ScreenErrorBoundary>;
+const ProfileScreen = () => <ScreenErrorBoundary screenName="Profile"><_ProfileScreen /></ScreenErrorBoundary>;
 
 // Modal Screens
-import PartyDetailModal from '../screens/PartyDetailModal';
-import PhotoDetailModal from '../screens/PhotoDetailModal';
-import FriendListScreen from '../screens/FriendListScreen';
+import PartyDetailModal as _PartyDetailModal from '../screens/PartyDetailModal';
+import PhotoDetailModal as _PhotoDetailModal from '../screens/PhotoDetailModal';
+import FriendListScreen as _FriendListScreen from '../screens/FriendListScreen';
 
-// Placeholder modals
-const FriendListModal = FriendListScreen;
-const SettingsModal = () => null;
+// Wrap modal screens with error boundaries
+const PartyDetailModal = () => <ScreenErrorBoundary screenName="PartyDetail"><_PartyDetailModal /></ScreenErrorBoundary>;
+const PhotoDetailModal = () => <ScreenErrorBoundary screenName="PhotoDetail"><_PhotoDetailModal /></ScreenErrorBoundary>;
+const FriendListModal = () => <ScreenErrorBoundary screenName="FriendList"><_FriendListScreen /></ScreenErrorBoundary>;
+const SettingsModal = () => <ScreenErrorBoundary screenName="Settings"><View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text style={{ color: '#fff' }}>Settings Coming Soon</Text></View></ScreenErrorBoundary>;
 
 // Stack and Tab navigators
 const AuthStack = createNativeStackNavigator();

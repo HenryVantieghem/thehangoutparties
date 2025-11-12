@@ -8,6 +8,7 @@ import * as Font from 'expo-font';
 import * as Notifications from 'expo-notifications';
 
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { LoadingProvider } from './src/providers/LoadingProvider';
 
 // Configure notifications
 Notifications.setNotificationHandler({
@@ -66,8 +67,14 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar style="light" backgroundColor="#0A0E27" />
-        <RootNavigator />
+        <LoadingProvider
+          showGlobalIndicator={true}
+          showOverlayForCritical={true}
+          automaticErrorHandling={true}
+        >
+          <StatusBar style="light" backgroundColor="#0A0E27" />
+          <RootNavigator />
+        </LoadingProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

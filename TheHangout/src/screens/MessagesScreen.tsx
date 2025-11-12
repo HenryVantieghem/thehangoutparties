@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   Platform,
   Animated,
   Dimensions,
-  Image,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,9 +16,13 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { InteractionManager } from 'react-native';
 
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS, ANIMATIONS } from '../constants';
 import { EmptyState } from '../components/EmptyState';
+import { OptimizedImage } from '../components/OptimizedImage';
+import { ComponentErrorBoundary } from '../components/ErrorBoundary';
+import { usePerformance } from '../hooks/usePerformance';
 
 const { width } = Dimensions.get('window');
 
@@ -162,6 +165,12 @@ const mockMessages: Message[] = [
 ];
 
 export function MessagesScreen() {
+  const { measureAsyncOperation, measureSyncOperation, logInteraction } = usePerformance({
+    componentName: 'MessagesScreen',
+    trackRenders: true,
+    trackInteractions: true,
+  });
+
   const [conversations, setConversations] = useState<Conversation[]>(mockConversations);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>(mockMessages);
@@ -174,7 +183,7 @@ export function MessagesScreen() {
   const textInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    Animated.parallel([
+    const animationCleanup = Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: ANIMATIONS.normal,
@@ -185,10 +194,19 @@ export function MessagesScreen() {
         ...ANIMATIONS.springConfig,
         useNativeDriver: true,
       }),
-    ]).start();
-  }, []);
+    ]);
+    
+    animationCleanup.start();
+
+    return () => {
+      animationCleanup.stop();
+      fadeAnim.setValue(0);
+      slideAnim.setValue(50);
+    };
+  }, [fadeAnim, slideAnim]);
 
   const handleConversationPress = useCallback((conversation: Conversation) => {
+    logInteraction('conversation_press', { conversationId: conversation.id, type: conversation.type });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedConversation(conversation);
     
@@ -198,11 +216,12 @@ export function MessagesScreen() {
         ? { ...conv, unreadCount: 0 }
         : conv
     ));
-  }, []);
+  }, [logInteraction]);
 
   const handleSendMessage = useCallback(() => {
     if (messageText.trim() === '') return;
     
+    logInteraction('send_message', { length: messageText.length });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
     const newMessage: Message = {
@@ -218,153 +237,165 @@ export function MessagesScreen() {
     setMessages(prev => [...prev, newMessage]);
     setMessageText('');
     
-    // Scroll to bottom
-    setTimeout(() => {
+    // Scroll to bottom with interaction manager to avoid blocking UI
+    InteractionManager.runAfterInteractions(() => {
       messageListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  }, [messageText]);
+    });
+  }, [messageText, logInteraction]);
 
   const handleBackPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedConversation(null);
   }, []);
 
-  const formatTime = (timestamp: string) => {
+  const formatTime = useCallback((timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
     });
-  };
+  }, []);
 
-  const renderConversationItem = ({ item, index }: { item: Conversation; index: number }) => (
-    <Animated.View
-      style={{
-        opacity: fadeAnim,
-        transform: [
-          {
-            translateY: slideAnim.interpolate({
-              inputRange: [0, 50],
-              outputRange: [0, 50 + index * 10],
-            }),
-          },
-        ],
-      }}
-    >
-      <TouchableOpacity
-        style={styles.conversationItem}
-        onPress={() => handleConversationPress(item)}
-        activeOpacity={0.8}
+  const renderConversationItem = useCallback(({ item, index }: { item: Conversation; index: number }) => (
+    <ComponentErrorBoundary componentName={`ConversationItem-${item.id}`}>
+      <Animated.View
+        style={{
+          opacity: fadeAnim,
+          transform: [
+            {
+              translateY: slideAnim.interpolate({
+                inputRange: [0, 50],
+                outputRange: [0, 50 + index * 10],
+              }),
+            },
+          ],
+        }}
       >
-        <BlurView intensity={15} style={styles.conversationBlur}>
-          <LinearGradient
-            colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.04)']}
-            style={styles.conversationGradient}
-          >
-            <View style={styles.conversationContent}>
-              <View style={styles.avatarContainer}>
-                <Image
-                  source={{ uri: item.avatar || 'https://picsum.photos/50/50' }}
-                  style={styles.avatar}
-                />
-                {item.type === 'direct' && item.isOnline && (
-                  <View style={styles.onlineIndicator} />
-                )}
-                {item.type === 'party' && (
-                  <View style={styles.partyBadge}>
-                    <Ionicons name="people" size={12} color={COLORS.white} />
-                  </View>
-                )}
-              </View>
-              
-              <View style={styles.conversationDetails}>
-                <View style={styles.conversationHeader}>
-                  <Text style={styles.conversationName} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  <Text style={styles.conversationTime}>
-                    {item.lastMessageTime}
-                  </Text>
-                </View>
-                
-                <View style={styles.conversationFooter}>
-                  <Text style={styles.lastMessage} numberOfLines={1}>
-                    {item.lastMessage}
-                  </Text>
-                  
-                  {item.unreadCount > 0 && (
-                    <View style={styles.unreadBadge}>
-                      <Text style={styles.unreadCount}>
-                        {item.unreadCount > 99 ? '99+' : item.unreadCount}
-                      </Text>
+        <TouchableOpacity
+          style={styles.conversationItem}
+          onPress={() => handleConversationPress(item)}
+          activeOpacity={0.8}
+        >
+          <BlurView intensity={15} style={styles.conversationBlur}>
+            <LinearGradient
+              colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.04)']}
+              style={styles.conversationGradient}
+            >
+              <View style={styles.conversationContent}>
+                <View style={styles.avatarContainer}>
+                  <OptimizedImage
+                    uri={item.avatar || 'https://picsum.photos/50/50'}
+                    width={50}
+                    height={50}
+                    style={styles.avatar}
+                    borderRadius={25}
+                    showLoadingIndicator={false}
+                  />
+                  {item.type === 'direct' && item.isOnline && (
+                    <View style={styles.onlineIndicator} />
+                  )}
+                  {item.type === 'party' && (
+                    <View style={styles.partyBadge}>
+                      <Ionicons name="people" size={12} color={COLORS.white} />
                     </View>
                   )}
                 </View>
                 
-                {item.members && (
-                  <View style={styles.membersInfo}>
-                    <Ionicons name="people-outline" size={12} color={COLORS.gray400} />
-                    <Text style={styles.membersText}>
-                      {item.members} members
+                <View style={styles.conversationDetails}>
+                  <View style={styles.conversationHeader}>
+                    <Text style={styles.conversationName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={styles.conversationTime}>
+                      {item.lastMessageTime}
                     </Text>
                   </View>
-                )}
-              </View>
-            </View>
-          </LinearGradient>
-        </BlurView>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-
-  const renderMessage = ({ item }: { item: Message }) => (
-    <View style={[styles.messageContainer, item.isOwn && styles.ownMessage]}>
-      {!item.isOwn && (
-        <Image
-          source={{ uri: item.senderAvatar || 'https://picsum.photos/32/32' }}
-          style={styles.messageAvatar}
-        />
-      )}
-      
-      <View style={[styles.messageBubble, item.isOwn && styles.ownMessageBubble]}>
-        <BlurView intensity={item.isOwn ? 10 : 15} style={styles.messageBlur}>
-          <LinearGradient
-            colors={item.isOwn 
-              ? [COLORS.cyan + '40', COLORS.cyan + '20']
-              : ['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']
-            }
-            style={styles.messageGradient}
-          >
-            {!item.isOwn && (
-              <Text style={styles.senderName}>{item.senderName}</Text>
-            )}
-            
-            <Text style={[styles.messageText, item.isOwn && styles.ownMessageText]}>
-              {item.content}
-            </Text>
-            
-            <Text style={[styles.messageTime, item.isOwn && styles.ownMessageTime]}>
-              {formatTime(item.timestamp)}
-            </Text>
-            
-            {item.reactions && item.reactions.length > 0 && (
-              <View style={styles.reactionsContainer}>
-                {item.reactions.map((reaction, index) => (
-                  <View key={index} style={styles.reaction}>
-                    <Text style={styles.reactionEmoji}>{reaction.emoji}</Text>
-                    <Text style={styles.reactionCount}>{reaction.count}</Text>
+                  
+                  <View style={styles.conversationFooter}>
+                    <Text style={styles.lastMessage} numberOfLines={1}>
+                      {item.lastMessage}
+                    </Text>
+                    
+                    {item.unreadCount > 0 && (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadCount}>
+                          {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                        </Text>
+                      </View>
+                    )}
                   </View>
-                ))}
+                  
+                  {item.members && (
+                    <View style={styles.membersInfo}>
+                      <Ionicons name="people-outline" size={12} color={COLORS.gray400} />
+                      <Text style={styles.membersText}>
+                        {item.members} members
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
-            )}
-          </LinearGradient>
-        </BlurView>
-      </View>
-    </View>
-  );
+            </LinearGradient>
+          </BlurView>
+        </TouchableOpacity>
+      </Animated.View>
+    </ComponentErrorBoundary>
+  ), [fadeAnim, slideAnim, handleConversationPress]);
 
-  const renderConversationsHeader = () => (
+  const renderMessage = useCallback(({ item }: { item: Message }) => (
+    <ComponentErrorBoundary componentName={`Message-${item.id}`}>
+      <View style={[styles.messageContainer, item.isOwn && styles.ownMessage]}>
+        {!item.isOwn && (
+          <OptimizedImage
+            uri={item.senderAvatar || 'https://picsum.photos/32/32'}
+            width={32}
+            height={32}
+            style={styles.messageAvatar}
+            borderRadius={16}
+            showLoadingIndicator={false}
+          />
+        )}
+        
+        <View style={[styles.messageBubble, item.isOwn && styles.ownMessageBubble]}>
+          <BlurView intensity={item.isOwn ? 10 : 15} style={styles.messageBlur}>
+            <LinearGradient
+              colors={item.isOwn 
+                ? [COLORS.cyan + '40', COLORS.cyan + '20']
+                : ['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']
+              }
+              style={styles.messageGradient}
+            >
+              {!item.isOwn && (
+                <Text style={styles.senderName}>{item.senderName}</Text>
+              )}
+              
+              <Text style={[styles.messageText, item.isOwn && styles.ownMessageText]}>
+                {item.content}
+              </Text>
+              
+              <Text style={[styles.messageTime, item.isOwn && styles.ownMessageTime]}>
+                {formatTime(item.timestamp)}
+              </Text>
+              
+              {item.reactions && item.reactions.length > 0 && (
+                <View style={styles.reactionsContainer}>
+                  {item.reactions.map((reaction, index) => (
+                    <View key={index} style={styles.reaction}>
+                      <Text style={styles.reactionEmoji}>{reaction.emoji}</Text>
+                      <Text style={styles.reactionCount}>{reaction.count}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </LinearGradient>
+          </BlurView>
+        </View>
+      </View>
+    </ComponentErrorBoundary>
+  ), [formatTime]);
+
+  const renderConversationsHeader = useMemo(() => (
     <View style={styles.header}>
       <Text style={styles.title}>Messages</Text>
       <TouchableOpacity
@@ -374,7 +405,7 @@ export function MessagesScreen() {
         <Ionicons name="search" size={24} color={COLORS.white} />
       </TouchableOpacity>
     </View>
-  );
+  ), []);
 
   const renderChatHeader = () => (
     <BlurView intensity={20} style={styles.chatHeader}>
@@ -391,9 +422,13 @@ export function MessagesScreen() {
         </TouchableOpacity>
         
         <View style={styles.chatHeaderInfo}>
-          <Image
-            source={{ uri: selectedConversation?.avatar || 'https://picsum.photos/40/40' }}
+          <OptimizedImage
+            uri={selectedConversation?.avatar || 'https://picsum.photos/40/40'}
+            width={36}
+            height={36}
             style={styles.chatAvatar}
+            borderRadius={18}
+            showLoadingIndicator={false}
           />
           <View style={styles.chatHeaderText}>
             <Text style={styles.chatTitle} numberOfLines={1}>
@@ -473,9 +508,22 @@ export function MessagesScreen() {
             ref={messageListRef}
             data={messages}
             renderItem={renderMessage}
-            keyExtractor={(item) => item.id}
+            keyExtractor={useCallback((item: Message) => item.id, [])}
             contentContainerStyle={styles.messagesContent}
             showsVerticalScrollIndicator={false}
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={5}
+            windowSize={8}
+            initialNumToRender={5}
+            updateCellsBatchingPeriod={100}
+            getItemLayout={useCallback(
+              (data: any, index: number) => ({
+                length: 80, // Estimated height of message
+                offset: 80 * index,
+                index,
+              }),
+              []
+            )}
           />
           
           {renderMessageInput()}
@@ -489,7 +537,7 @@ export function MessagesScreen() {
       <FlatList
         data={conversations}
         renderItem={renderConversationItem}
-        keyExtractor={(item) => item.id}
+        keyExtractor={useCallback((item: Conversation) => item.id, [])}
         ListHeaderComponent={renderConversationsHeader}
         ListEmptyComponent={
           <EmptyState
@@ -502,6 +550,19 @@ export function MessagesScreen() {
         }
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={3}
+        windowSize={8}
+        initialNumToRender={3}
+        updateCellsBatchingPeriod={100}
+        getItemLayout={useCallback(
+          (data: any, index: number) => ({
+            length: 90, // Estimated height of conversation item
+            offset: 90 * index,
+            index,
+          }),
+          []
+        )}
       />
     </SafeAreaView>
   );

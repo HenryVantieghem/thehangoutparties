@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
-  Image,
   Animated,
   Dimensions,
   StyleSheet,
@@ -15,9 +14,13 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { InteractionManager } from 'react-native';
 
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS, ANIMATIONS } from '../constants';
 import { Party } from '../types';
+import { OptimizedImage } from '../components/OptimizedImage';
+import { ComponentErrorBoundary } from '../components/ErrorBoundary';
+import { usePerformance } from '../hooks/usePerformance';
 
 const { width } = Dimensions.get('window');
 
@@ -125,6 +128,12 @@ const STAT_ITEMS = [
 ] as const;
 
 export function ProfileScreen() {
+  const { measureAsyncOperation, measureSyncOperation, logInteraction } = usePerformance({
+    componentName: 'ProfileScreen',
+    trackRenders: true,
+    trackInteractions: true,
+  });
+
   const [profile, setProfile] = useState<UserProfile>(mockProfile);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'stats' | 'badges' | 'photos'>('stats');
@@ -134,7 +143,7 @@ export function ProfileScreen() {
   const statsAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.parallel([
+    const animationCleanup = Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: ANIMATIONS.normal,
@@ -145,48 +154,67 @@ export function ProfileScreen() {
         ...ANIMATIONS.springConfig,
         useNativeDriver: true,
       }),
-    ]).start(() => {
-      // Animate stats after profile loads
-      Animated.spring(statsAnim, {
-        toValue: 1,
-        tension: 50,
-        friction: 8,
-        useNativeDriver: true,
-      }).start();
+    ]);
+    
+    const statsAnimation = Animated.spring(statsAnim, {
+      toValue: 1,
+      tension: 50,
+      friction: 8,
+      useNativeDriver: true,
     });
-  }, []);
+    
+    animationCleanup.start(() => {
+      // Animate stats after profile loads
+      statsAnimation.start();
+    });
 
-  const handleRefresh = async () => {
+    return () => {
+      animationCleanup.stop();
+      statsAnimation.stop();
+      fadeAnim.setValue(0);
+      slideAnim.setValue(50);
+      statsAnim.setValue(0);
+    };
+  }, [fadeAnim, slideAnim, statsAnim]);
+
+  const handleRefresh = useCallback(async () => {
+    logInteraction('profile_refresh');
     setRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await measureAsyncOperation('profile_refresh', async () => {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    });
     setRefreshing(false);
-  };
+  }, [logInteraction, measureAsyncOperation]);
 
-  const handleTabChange = (tab: typeof activeTab) => {
+  const handleTabChange = useCallback((tab: typeof activeTab) => {
+    logInteraction('tab_change', { tab });
     Haptics.selectionAsync();
     setActiveTab(tab);
-  };
+  }, [logInteraction]);
 
-  const handleSettingsPress = () => {
+  const handleSettingsPress = useCallback(() => {
+    logInteraction('settings_press');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     console.log('Navigate to settings');
-  };
+  }, [logInteraction]);
 
-  const handleEditProfile = () => {
+  const handleEditProfile = useCallback(() => {
+    logInteraction('edit_profile_press');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     console.log('Navigate to edit profile');
-  };
+  }, [logInteraction]);
 
-  const renderProfileHeader = () => (
-    <Animated.View 
-      style={[styles.profileHeader, {
-        opacity: fadeAnim,
-        transform: [{ translateY: slideAnim }],
-      }]}
-    >
+  const renderProfileHeader = useMemo(() => (
+    <ComponentErrorBoundary componentName="ProfileHeader">
+      <Animated.View 
+        style={[styles.profileHeader, {
+          opacity: fadeAnim,
+          transform: [{ translateY: slideAnim }],
+        }]}
+      >
       <BlurView intensity={15} style={styles.headerBlur}>
         <LinearGradient
           colors={['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']}
@@ -205,7 +233,14 @@ export function ProfileScreen() {
           {/* Avatar and Basic Info */}
           <View style={styles.avatarSection}>
             <View style={styles.avatarContainer}>
-              <Image source={{ uri: profile.avatar }} style={styles.avatar} />
+              <OptimizedImage 
+                uri={profile.avatar} 
+                width={100}
+                height={100}
+                style={styles.avatar}
+                borderRadius={50}
+                showLoadingIndicator={true}
+              />
               {profile.isVerified && (
                 <View style={styles.verifiedBadge}>
                   <Ionicons name="checkmark" size={16} color={COLORS.white} />
@@ -258,8 +293,9 @@ export function ProfileScreen() {
           </View>
         </LinearGradient>
       </BlurView>
-    </Animated.View>
-  );
+      </Animated.View>
+    </ComponentErrorBoundary>
+  ), [fadeAnim, slideAnim, profile, handleSettingsPress, handleEditProfile]);
 
   const renderStatsGrid = () => (
     <Animated.View 
@@ -351,9 +387,13 @@ export function ProfileScreen() {
       <View style={styles.photosGrid}>
         {Array.from({ length: 9 }).map((_, index) => (
           <TouchableOpacity key={index} style={styles.photoItem}>
-            <Image
-              source={{ uri: `https://picsum.photos/120/120?random=${index + 200}` }}
+            <OptimizedImage
+              uri={`https://picsum.photos/120/120?random=${index + 200}`}
+              width={(width - SPACING.lg * 2 - SPACING.sm * 2) / 3}
+              height={(width - SPACING.lg * 2 - SPACING.sm * 2) / 3}
               style={styles.photo}
+              borderRadius={RADIUS.md}
+              showLoadingIndicator={false}
             />
             <BlurView intensity={20} style={styles.photoOverlay}>
               <Ionicons name="heart" size={16} color={COLORS.white} />
@@ -405,14 +445,14 @@ export function ProfileScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={
+        refreshControl={useMemo(() => (
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
             tintColor={COLORS.cyan}
             colors={[COLORS.cyan]}
           />
-        }
+        ), [refreshing, handleRefresh])}
       >
         {renderProfileHeader()}
         {renderTabButtons()}

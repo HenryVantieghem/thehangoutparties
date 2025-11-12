@@ -26,6 +26,7 @@ import { useNavigation } from '@react-navigation/native';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../constants';
 import { usePartyStore, useLocationStore } from '../stores';
 import { Party } from '../types';
+import { createPartySchema } from '../utils/validation';
 
 const { width } = Dimensions.get('window');
 
@@ -112,22 +113,39 @@ export function CreatePartyScreen() {
   const validateStep = useCallback((step: number): boolean => {
     const newErrors: Record<string, string> = {};
 
+    // Create validation data based on current step
+    const validationData = {
+      title: formData.title,
+      description: formData.description || undefined,
+      address: formData.address,
+      latitude: formData.latitude,
+      longitude: formData.longitude,
+      max_attendees: formData.max_attendees,
+      vibe: formData.vibe,
+      tags: formData.tags,
+      starts_at: new Date(Date.now() + 3600000), // Default to 1 hour from now
+    };
+
     switch (step) {
       case 0: // Details
-        if (!formData.title.trim()) {
-          newErrors.title = 'Party title is required';
-        } else if (formData.title.length > 100) {
-          newErrors.title = 'Title must be under 100 characters';
-        }
-        
-        if (!formData.description.trim()) {
-          newErrors.description = 'Description is required';
-        } else if (formData.description.length > 500) {
-          newErrors.description = 'Description must be under 500 characters';
-        }
-
-        if (formData.max_attendees < 5 || formData.max_attendees > 500) {
-          newErrors.max_attendees = 'Must be between 5 and 500 attendees';
+        try {
+          createPartySchema.pick({
+            title: true,
+            description: true,
+            max_attendees: true,
+            vibe: true
+          }).parse({
+            title: validationData.title,
+            description: validationData.description,
+            max_attendees: validationData.max_attendees,
+            vibe: validationData.vibe
+          });
+        } catch (err: any) {
+          if (err.errors) {
+            err.errors.forEach((error: any) => {
+              newErrors[error.path[0]] = error.message;
+            });
+          }
         }
         break;
 
@@ -138,8 +156,22 @@ export function CreatePartyScreen() {
         break;
 
       case 2: // Location
-        if (!formData.address.trim()) {
-          newErrors.address = 'Address is required';
+        try {
+          createPartySchema.pick({
+            address: true,
+            latitude: true,
+            longitude: true
+          }).parse({
+            address: validationData.address,
+            latitude: validationData.latitude,
+            longitude: validationData.longitude
+          });
+        } catch (err: any) {
+          if (err.errors) {
+            err.errors.forEach((error: any) => {
+              newErrors[error.path[0]] = error.message;
+            });
+          }
         }
         break;
     }
@@ -236,20 +268,53 @@ export function CreatePartyScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const newParty: Partial<Party> = {
-        id: Date.now().toString(),
+      // Final validation with complete schema
+      const validationData = {
         title: formData.title,
-        description: formData.description,
-        photo_url: formData.photo_url,
+        description: formData.description || undefined,
         address: formData.address,
         latitude: formData.latitude,
         longitude: formData.longitude,
         max_attendees: formData.max_attendees,
         vibe: formData.vibe,
         tags: formData.tags,
+        starts_at: new Date(Date.now() + 3600000), // Default to 1 hour from now
+        visibility: 'public' as const,
+      };
+
+      // Validate all required fields
+      const validatedData = createPartySchema.pick({
+        title: true,
+        description: true,
+        address: true,
+        latitude: true,
+        longitude: true,
+        max_attendees: true,
+        vibe: true,
+        tags: true,
+        starts_at: true,
+        visibility: true
+      }).parse(validationData);
+
+      // Additional validation for required fields not in schema
+      if (!formData.photo_url) {
+        throw new Error('Party photo is required');
+      }
+
+      // Simulate API call with validated data
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const newParty: Partial<Party> = {
+        id: Date.now().toString(),
+        title: validatedData.title,
+        description: validatedData.description,
+        photo_url: formData.photo_url,
+        address: validatedData.address,
+        latitude: validatedData.latitude,
+        longitude: validatedData.longitude,
+        max_attendees: validatedData.max_attendees,
+        vibe: validatedData.vibe,
+        tags: validatedData.tags,
         created_by: 'current-user-id',
         attendee_count: 1,
         status: 'active',
@@ -269,8 +334,18 @@ export function CreatePartyScreen() {
         'Your party has been created successfully. People can now discover and join!',
         [{ text: 'Great!', onPress: () => navigation.navigate('Discover' as never) }]
       );
-    } catch (error) {
-      Alert.alert('Error', 'Failed to create party. Please try again.');
+    } catch (error: any) {
+      console.error('Party creation validation error:', error);
+      
+      // Handle validation errors
+      if (error.errors) {
+        const firstError = error.errors[0];
+        Alert.alert('Validation Error', firstError.message);
+      } else if (error.message) {
+        Alert.alert('Error', error.message);
+      } else {
+        Alert.alert('Error', 'Failed to create party. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }

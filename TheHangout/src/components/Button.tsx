@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -9,9 +9,15 @@ import {
   TouchableOpacityProps,
   View,
 } from 'react-native';
-import { COLORS, SPACING } from '../../constants';
+import * as Haptics from 'expo-haptics';
+import { COLORS, SPACING, ACCESSIBILITY, TYPOGRAPHY } from '../constants';
+import { 
+  createButtonAccessibility, 
+  useAccessibility, 
+  AccessibilityAnnouncements 
+} from '../utils/accessibility';
 
-export type ButtonVariant = 'primary' | 'secondary';
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'success' | 'error' | 'warning';
 export type ButtonSize = 'small' | 'medium' | 'large';
 
 export interface ButtonProps extends Omit<TouchableOpacityProps, 'style'> {
@@ -33,6 +39,18 @@ export interface ButtonProps extends Omit<TouchableOpacityProps, 'style'> {
   textStyle?: TextStyle;
   /** Test ID for testing */
   testID?: string;
+  
+  // Enhanced accessibility props
+  /** Accessibility label override */
+  accessibilityLabel?: string;
+  /** Accessibility hint for screen readers */
+  accessibilityHint?: string;
+  /** Enable haptic feedback on press */
+  hapticFeedback?: boolean;
+  /** Announce button press to screen readers */
+  announcePress?: boolean;
+  /** Auto focus this button when rendered */
+  autoFocus?: boolean;
 }
 
 /**
@@ -48,17 +66,84 @@ export const Button: React.FC<ButtonProps> = ({
   style,
   textStyle,
   testID,
+  accessibilityLabel,
+  accessibilityHint,
+  hapticFeedback = true,
+  announcePress = false,
+  autoFocus = false,
   onPress,
   ...props
 }) => {
+  const buttonRef = useRef<TouchableOpacity>(null);
+  const { announceForScreenReader, isReduceMotionEnabled } = useAccessibility();
   const isDisabled = disabled || loading;
+
+  useEffect(() => {
+    // Auto-focus if requested and not disabled
+    if (autoFocus && !isDisabled && buttonRef.current) {
+      const timer = setTimeout(() => {
+        buttonRef.current?.focus();
+      }, ACCESSIBILITY.ANNOUNCEMENTS.NAVIGATION_DELAY);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus, isDisabled]);
+
+  const handlePress = async () => {
+    if (isDisabled || !onPress) return;
+
+    // Haptic feedback for better UX
+    if (hapticFeedback) {
+      await Haptics.impactAsync(
+        size === 'large' 
+          ? Haptics.ImpactFeedbackStyle.Medium 
+          : Haptics.ImpactFeedbackStyle.Light
+      );
+    }
+
+    // Screen reader announcement
+    if (announcePress) {
+      announceForScreenReader(
+        `${accessibilityLabel || title} activated`, 
+        'assertive'
+      );
+    }
+
+    onPress();
+  };
+
+  // Create accessibility configuration
+  const accessibilityConfig = createButtonAccessibility(
+    accessibilityLabel || title,
+    accessibilityHint || (loading ? 'Button is loading, please wait' : undefined),
+    isDisabled,
+    false
+  );
+
+  // Get appropriate loading indicator color
+  const getLoadingColor = (): string => {
+    switch (variant) {
+      case 'primary':
+        return COLORS.dark;
+      case 'secondary':
+      case 'outline':
+      case 'ghost':
+        return COLORS.cyan;
+      case 'success':
+        return COLORS.white;
+      case 'error':
+        return COLORS.white;
+      case 'warning':
+        return COLORS.dark;
+      default:
+        return COLORS.cyan;
+    }
+  };
 
   return (
     <TouchableOpacity
+      ref={buttonRef}
       testID={testID}
-      accessibilityLabel={title}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: isDisabled }}
       style={[
         styles.button,
         styles[variant],
@@ -66,17 +151,38 @@ export const Button: React.FC<ButtonProps> = ({
         isDisabled && styles.disabled,
         style,
       ]}
-      onPress={onPress}
+      onPress={handlePress}
       disabled={isDisabled}
       activeOpacity={0.7}
+      
+      // Enhanced accessibility props
+      {...accessibilityConfig}
+      accessibilityState={{
+        ...accessibilityConfig.accessibilityState,
+        busy: loading,
+      }}
+      
       {...props}
     >
       {loading ? (
-        <ActivityIndicator
-          size="small"
-          color={variant === 'primary' ? COLORS.dark : COLORS.cyan}
-          testID={`${testID}-loading`}
-        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator
+            size={size === 'large' ? 'large' : 'small'}
+            color={getLoadingColor()}
+            testID={`${testID}-loading`}
+          />
+          <Text
+            style={[
+              styles.text,
+              styles[`${variant}Text`],
+              styles[`${size}Text`],
+              styles.loadingText,
+              textStyle,
+            ]}
+          >
+            Loading...
+          </Text>
+        </View>
       ) : (
         <>
           {leftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
@@ -104,8 +210,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     borderWidth: 1,
+    overflow: 'hidden',
   },
-  // Variants
+  
+  // Variants with WCAG AA compliant colors
   primary: {
     backgroundColor: COLORS.cyan,
     borderColor: COLORS.cyan,
@@ -114,51 +222,113 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderColor: COLORS.cyan,
   },
-  // Sizes
+  outline: {
+    backgroundColor: 'transparent',
+    borderColor: COLORS.cyanAccessible,
+    borderWidth: 2,
+  },
+  ghost: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+  },
+  success: {
+    backgroundColor: COLORS.success,
+    borderColor: COLORS.success,
+  },
+  error: {
+    backgroundColor: COLORS.error,
+    borderColor: COLORS.error,
+  },
+  warning: {
+    backgroundColor: COLORS.warning,
+    borderColor: COLORS.warning,
+  },
+  
+  // Sizes with proper accessibility touch targets
   small: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    minHeight: 36,
+    minHeight: ACCESSIBILITY.MIN_TOUCH_TARGET.HEIGHT, // 44px minimum
+    minWidth: ACCESSIBILITY.MIN_TOUCH_TARGET.WIDTH,   // 44px minimum
   },
   medium: {
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
-    minHeight: 44,
+    minHeight: ACCESSIBILITY.MIN_TOUCH_TARGET.HEIGHT + 4, // 48px
+    minWidth: ACCESSIBILITY.MIN_TOUCH_TARGET.WIDTH + 8,   // 52px
   },
   large: {
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.lg,
-    minHeight: 52,
+    minHeight: ACCESSIBILITY.MIN_TOUCH_TARGET.HEIGHT + 8, // 52px
+    minWidth: ACCESSIBILITY.MIN_TOUCH_TARGET.WIDTH + 16,  // 60px
   },
-  // Text styles
+  
+  // Text styles with proper typography and contrast
   text: {
+    ...TYPOGRAPHY.body,
     fontWeight: '600' as const,
     textAlign: 'center',
   },
   leftIcon: {
     marginRight: SPACING.xs,
   },
+  
+  // Variant text styles - WCAG AA compliant
   primaryText: {
-    color: COLORS.dark,
+    color: COLORS.dark, // High contrast on cyan background
   },
   secondaryText: {
-    color: COLORS.cyan,
+    color: COLORS.cyanAccessible, // Enhanced contrast on dark background
   },
+  outlineText: {
+    color: COLORS.cyanAccessible, // Enhanced contrast
+  },
+  ghostText: {
+    color: COLORS.cyanAccessible, // Enhanced contrast
+  },
+  successText: {
+    color: COLORS.white, // High contrast on success background
+  },
+  errorText: {
+    color: COLORS.white, // High contrast on error background
+  },
+  warningText: {
+    color: COLORS.dark, // High contrast on warning background
+  },
+  
+  // Size text styles with accessible font sizes
   smallText: {
     fontSize: 14,
+    lineHeight: 20,
   },
   mediumText: {
     fontSize: 16,
+    lineHeight: 24,
   },
   largeText: {
-    fontSize: 18,
+    fontSize: ACCESSIBILITY.FONT_SIZES.LARGE_TEXT, // 18pt for better readability
+    lineHeight: 26,
   },
-  // States
+  
+  // States with proper accessibility indicators
   disabled: {
-    opacity: 0.5,
+    opacity: 0.6,
+    backgroundColor: COLORS.disabled,
+    borderColor: COLORS.disabled,
   },
   disabledText: {
-    opacity: 0.7,
+    color: COLORS.textTertiary, // Still meets AA contrast ratio
+  },
+  
+  // Loading state styles
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  loadingText: {
+    marginLeft: SPACING.xs,
   },
 });
 

@@ -6,7 +6,19 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:ci": "jest --ci --coverage --silent",
+    "test:e2e": "detox test",
+    "test:e2e:build": "detox build",
+    "test:e2e:ios": "detox test --configuration ios.sim.debug",
+    "test:e2e:android": "detox test --configuration android.emu.debug",
+    "test:security": "jest --testPathPattern=security",
+    "test:components": "jest --testPathPattern=components",
+    "test:hooks": "jest --testPathPattern=hooks",
+    "lint:test": "eslint **/*.test.ts **/*.test.tsx **/*.spec.ts **/*.spec.tsx"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -44,7 +56,21 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "@types/react-native": "^0.72.8",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "@testing-library/jest-native": "^5.4.3",
+    "@testing-library/react-native": "^12.4.3",
+    "@types/jest": "^29.5.12",
+    "@types/lodash": "^4.17.10",
+    "detox": "^20.22.3",
+    "jest": "^29.7.0",
+    "jest-expo": "~54.0.6",
+    "jest-environment-node": "^29.7.0",
+    "react-test-renderer": "19.1.0",
+    "@babel/core": "^7.25.0",
+    "@babel/preset-env": "^7.25.0",
+    "@babel/preset-typescript": "^7.24.0",
+    "babel-jest": "^29.7.0",
+    "metro-react-native-babel-preset": "^0.77.0"
   },
   "private": true
 }
