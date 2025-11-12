@@ -260,7 +260,7 @@ export function OnboardingScreen() {
       await supabaseService.updateProfile({
         username,
         bio,
-        avatar_url: avatar,
+        avatar_url: avatar || undefined,
       });
       
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

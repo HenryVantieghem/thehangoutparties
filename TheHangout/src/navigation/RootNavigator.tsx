@@ -18,16 +18,20 @@ import { ResetPasswordScreen } from '../screens/auth/ResetPasswordScreen';
 import { OnboardingScreen } from '../screens/OnboardingScreen';
 
 // Main Screens
-import DiscoverScreen from '../screens/DiscoverScreen';
-import MapScreen from '../screens/MapScreen';
-import CreatePartyScreen from '../screens/CreatePartyScreen';
-import MessagesScreen from '../screens/MessagesScreen';
-import ProfileScreen from '../screens/ProfileScreen';
+import { DiscoverScreen } from '../screens/DiscoverScreen';
+import { MapScreen } from '../screens/MapScreen';
+import { CreatePartyScreen } from '../screens/CreatePartyScreen';
+import { MessagesScreen } from '../screens/MessagesScreen';
+import { ProfileScreen } from '../screens/ProfileScreen';
 
 // Modal Screens
 import PartyDetailModal from '../screens/PartyDetailModal';
 import PhotoDetailModal from '../screens/PhotoDetailModal';
 import FriendListScreen from '../screens/FriendListScreen';
+
+// Placeholder modals
+const FriendListModal = FriendListScreen;
+const SettingsModal = () => null;
 
 // Stack and Tab navigators
 const AuthStack = createNativeStackNavigator();
@@ -398,7 +402,7 @@ export function RootNavigator() {
   }, []);
 
   return (
-    <NavigationContainer linking={linking}>
+    <NavigationContainer linking={linking as any}>
       <RootStackNavigator />
     </NavigationContainer>
   );

@@ -121,7 +121,7 @@ export function DiscoverScreen() {
 
   const handlePartyPress = useCallback((party: Party) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate('PartyDetail' as never, { partyId: party.id } as never);
+    (navigation as any).navigate('PartyDetail', { partyId: party.id });
   }, [navigation]);
 
   const handleLikeParty = useCallback(async (partyId: string) => {

@@ -18,6 +18,7 @@ import { Avatar, Badge, PhotoCard, MessageBubble, Button } from '../components';
 import { usePartyStore, usePhotoStore, useMessageStore, useAuthStore } from '../stores';
 import { formatTimeAgo, formatDistance } from '../utils';
 import { TextInput } from 'react-native';
+import { User } from '../types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -36,9 +37,9 @@ export default function PartyDetailModal() {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
 
   const party = parties.find((p) => p.id === partyId);
-  const partyPhotos = photos.filter((p) => p.party_id === partyId);
-  const partyMessages = messages.filter((m) => m.party_id === partyId);
-  const isAttending = party?.attendees?.some((a) => a.user_id === user?.id) || false;
+  const partyPhotos = photos.filter((p: any) => p.party_id === partyId);
+  const partyMessages = messages.filter((m: any) => m.party_id === partyId);
+  const isAttending = party?.attendees?.some((a: User) => a.id === user?.id) || false;
 
   useEffect(() => {
     if (partyId) {
@@ -125,7 +126,7 @@ export default function PartyDetailModal() {
             }}
             style={styles.carousel}
           >
-            {partyPhotos.map((photo, index) => (
+            {partyPhotos.map((photo: any, index: number) => (
               <Image
                 key={photo.id}
                 source={{ uri: photo.photo_url }}
@@ -229,7 +230,7 @@ export default function PartyDetailModal() {
                   <PhotoCard
                     photo={item}
                     onPress={() =>
-                      navigation.navigate('PhotoDetail' as never, { photoId: item.id } as never)
+                      (navigation as any).navigate('PhotoDetail', { photoId: item.id })
                     }
                   />
                 )}

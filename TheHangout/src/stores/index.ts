@@ -216,6 +216,7 @@ interface PartyActions {
   removeParty: (id: string) => void;
   clearError: () => void;
   subscribe: (partyId: string, callback: (payload: any) => void) => any;
+  joinParty: (partyId: string) => Promise<void>;
 }
 
 export const usePartyStore = create<PartyState & PartyActions>()((set, get) => ({
@@ -266,6 +267,25 @@ export const usePartyStore = create<PartyState & PartyActions>()((set, get) => (
     // Will be implemented with Supabase real-time
     console.log('Subscribing to party updates:', partyId);
     return null;
+  },
+
+  joinParty: async (partyId: string) => {
+    try {
+      set({ loading: true });
+      // TODO: Implement actual join party API call
+      await new Promise(resolve => setTimeout(resolve, 500));
+      set((state) => ({
+        parties: state.parties.map((party) =>
+          party.id === partyId
+            ? { ...party, attendee_count: (party.attendee_count || 0) + 1 }
+            : party
+        ),
+        loading: false,
+      }));
+    } catch (error: any) {
+      set({ error: error.message || 'Failed to join party', loading: false });
+      throw error;
+    }
   },
 }));
 
@@ -393,3 +413,60 @@ export const useLocationStore = create<LocationState & LocationActions>()(
     }
   )
 );
+
+// Photo Store (placeholder)
+interface PhotoState {
+  photos: any[];
+  loading: boolean;
+  error: string | null;
+}
+
+interface PhotoActions {
+  setPhotos: (photos: any[]) => void;
+  addPhoto: (photo: any) => void;
+  removePhoto: (id: string) => void;
+  clearError: () => void;
+}
+
+export const usePhotoStore = create<PhotoState & PhotoActions>()((set) => ({
+  photos: [],
+  loading: false,
+  error: null,
+  setPhotos: (photos) => set({ photos }),
+  addPhoto: (photo) => set((state) => ({ photos: [photo, ...state.photos] })),
+  removePhoto: (id) => set((state) => ({ photos: state.photos.filter((p) => p.id !== id) })),
+  clearError: () => set({ error: null }),
+}));
+
+// Message Store (placeholder)
+interface MessageState {
+  messages: any[];
+  loading: boolean;
+  error: string | null;
+}
+
+interface MessageActions {
+  setMessages: (messages: any[]) => void;
+  sendMessage: (partyId: string, text: string) => Promise<void>;
+  addMessage: (message: any) => void;
+  clearError: () => void;
+}
+
+export const useMessageStore = create<MessageState & MessageActions>()((set) => ({
+  messages: [],
+  loading: false,
+  error: null,
+  setMessages: (messages) => set({ messages }),
+  sendMessage: async (partyId: string, text: string) => {
+    // Placeholder implementation
+    const newMessage = {
+      id: Date.now().toString(),
+      party_id: partyId,
+      content: text,
+      created_at: new Date().toISOString(),
+    };
+    set((state) => ({ messages: [...state.messages, newMessage] }));
+  },
+  addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
+  clearError: () => set({ error: null }),
+}));

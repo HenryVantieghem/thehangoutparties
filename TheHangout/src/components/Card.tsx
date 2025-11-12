@@ -4,7 +4,7 @@ import { COLORS, SPACING } from '../../constants';
 
 export interface CardProps extends ViewProps {
   /** Custom container style */
-  style?: ViewStyle;
+  style?: ViewStyle | ViewStyle[];
   /** Card padding size */
   padding?: keyof typeof SPACING;
   /** Test ID for testing */

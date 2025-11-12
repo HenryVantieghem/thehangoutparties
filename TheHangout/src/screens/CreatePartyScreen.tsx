@@ -54,7 +54,7 @@ export function CreatePartyScreen() {
     latitude: currentLocation?.latitude || 40.7128,
     longitude: currentLocation?.longitude || -74.0060,
     max_attendees: 50,
-    vibe: 'chill' as const,
+    vibe: 'chill' as 'chill' | 'lit' | 'exclusive' | 'casual' | 'banger' | null,
     tags: [] as string[],
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -390,7 +390,7 @@ export function CreatePartyScreen() {
               ]}
               onPress={() => {
                 Haptics.selectionAsync();
-                setFormData({ ...formData, vibe: vibe.id });
+                setFormData({ ...formData, vibe: vibe.id as 'chill' | 'lit' | 'exclusive' | 'casual' | 'banger' });
               }}
             >
               <BlurView intensity={15} style={styles.vibeBlur}>

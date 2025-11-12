@@ -203,7 +203,7 @@ export function MapScreen() {
               style={styles.controlGradient}
             >
               <Ionicons 
-                name={mapType === 'standard' ? 'satellite' : 'map'} 
+                name={(mapType === 'standard' ? 'satellite' : 'map') as any} 
                 size={24} 
                 color={COLORS.white} 
               />
