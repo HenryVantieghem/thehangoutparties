@@ -7,7 +7,7 @@ import * as Haptics from 'expo-haptics';
 
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../constants';
 
-interface EmptyStateProps {
+export interface EmptyStateProps {
   icon: string;
   title: string;
   message: string;
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
   title: {
     ...TYPOGRAPHY.title2,
     color: COLORS.white,
-    fontWeight: '700' as const as const,
+    fontWeight: '700' as const,
     textAlign: 'center',
     marginBottom: SPACING.sm,
   },

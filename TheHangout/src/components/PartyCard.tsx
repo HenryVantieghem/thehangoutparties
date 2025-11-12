@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   liveText: {
     ...TYPOGRAPHY.caption2,
     color: COLORS.white,
-    fontWeight: '700' as const as const,
+    fontWeight: '700' as const,
   },
   trendingBadge: {
     position: 'absolute',
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
   trendingText: {
     ...TYPOGRAPHY.caption2,
     color: COLORS.white,
-    fontWeight: '600' as const as const,
+    fontWeight: '600' as const,
     marginLeft: SPACING.xs,
   },
   likeButton: {
@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   title: {
     ...TYPOGRAPHY.title2,
     color: COLORS.white,
-    fontWeight: '700' as const as const,
+    fontWeight: '700' as const,
     flex: 1,
     marginRight: SPACING.sm,
   },
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
   hostName: {
     ...TYPOGRAPHY.caption1,
     color: COLORS.gray300,
-    fontWeight: '500' as const as const,
+    fontWeight: '500' as const,
     flex: 1,
   },
   description: {
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.caption1,
     color: COLORS.gray400,
     marginLeft: SPACING.xs,
-    fontWeight: '500' as const as const,
+    fontWeight: '500' as const,
   },
   tagsContainer: {
     flexDirection: 'row',
@@ -362,12 +362,12 @@ const styles = StyleSheet.create({
   tagText: {
     ...TYPOGRAPHY.caption2,
     color: COLORS.cyan,
-    fontWeight: '500' as const as const,
+    fontWeight: '500' as const,
   },
   moreTagsText: {
     ...TYPOGRAPHY.caption2,
     color: COLORS.gray400,
-    fontWeight: '500' as const as const,
+    fontWeight: '500' as const,
   },
   actionRow: {
     flexDirection: 'row',
@@ -391,7 +391,7 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.bodyBold,
     color: COLORS.white,
     marginLeft: SPACING.xs,
-    fontWeight: '600' as const as const,
+    fontWeight: '600' as const,
   },
   joinButtonTextActive: {
     color: COLORS.dark,
@@ -409,7 +409,7 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.caption1,
     color: COLORS.gray300,
     marginLeft: SPACING.xs,
-    fontWeight: '500' as const as const,
+    fontWeight: '500' as const,
   },
 });
 

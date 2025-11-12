@@ -215,6 +215,7 @@ interface PartyActions {
   updateParty: (id: string, updates: Partial<Party>) => void;
   removeParty: (id: string) => void;
   clearError: () => void;
+  subscribe: (partyId: string, callback: (payload: any) => void) => any;
 }
 
 export const usePartyStore = create<PartyState & PartyActions>()((set, get) => ({
@@ -258,6 +259,13 @@ export const usePartyStore = create<PartyState & PartyActions>()((set, get) => (
 
   clearError: () => {
     set({ error: null });
+  },
+
+  subscribe: (partyId: string, callback: (payload: any) => void) => {
+    // Placeholder for real-time subscription
+    // Will be implemented with Supabase real-time
+    console.log('Subscribing to party updates:', partyId);
+    return null;
   },
 }));
 
