@@ -35,7 +35,7 @@ export const UserCard: React.FC<UserCardProps> = ({
   return (
     <Card
       testID={testID}
-      style={[styles.card, style]}
+      style={style ? [styles.card, style] : styles.card}
       padding="md"
     >
       <View style={styles.content}>
@@ -64,10 +64,10 @@ export const UserCard: React.FC<UserCardProps> = ({
           )}
           <View style={styles.stats}>
             <Text style={styles.stat}>
-              {user.stats.friend_count} friends
+              {user.friend_count || 0} friends
             </Text>
             <Text style={styles.stat}>
-              {user.stats.parties_attended} parties
+              {user.parties_attended || 0} parties
             </Text>
           </View>
         </View>
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
   },
   username: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     color: COLORS.white,
     marginBottom: SPACING.xs,
   },

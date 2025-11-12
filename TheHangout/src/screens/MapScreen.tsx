@@ -1,55 +1,63 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
+  StyleSheet,
+  Dimensions,
+  Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
-import { COLORS, SPACING, TYPOGRAPHY, API } from '../constants';
-import { BottomSheet, PartyCard } from '../components';
+import MapView, { Marker, Callout, Region } from 'react-native-maps';
+
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../constants';
 import { usePartyStore, useLocationStore } from '../stores';
 import { Party } from '../types';
-import { calculateDistance } from '../utils';
+import { mockParties } from '../utils';
 
-const INITIAL_REGION = {
-  latitude: 37.7749,
-  longitude: -122.4194,
-  latitudeDelta: 0.0922,
-  longitudeDelta: 0.0421,
-};
+const { width, height } = Dimensions.get('window');
 
-export default function MapScreen() {
-  const navigation = useNavigation();
-  const { parties, fetchParties, loading } = usePartyStore();
-  const { currentLocation, watchLocation } = useLocationStore();
-  const [selectedParty, setSelectedParty] = useState<Party | null>(null);
-  const [showBottomSheet, setShowBottomSheet] = useState(false);
-  const [mapRegion, setMapRegion] = useState(INITIAL_REGION);
-  const [hasLocationPermission, setHasLocationPermission] = useState(false);
+export function MapScreen() {
+  const { parties, setParties } = usePartyStore();
+  const { currentLocation, startTracking } = useLocationStore();
+  
   const mapRef = useRef<MapView>(null);
+  const [selectedParty, setSelectedParty] = useState<Party | null>(null);
+  const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
+  const [showUserLocation, setShowUserLocation] = useState(true);
+  
+  const defaultRegion: Region = {
+    latitude: 40.7128,
+    longitude: -74.0060,
+    latitudeDelta: 0.05,
+    longitudeDelta: 0.05,
+  };
 
   useEffect(() => {
+    // Load parties if not already loaded
+    if (parties.length === 0) {
+      setParties(mockParties);
+    }
+    
+    // Start location tracking
     requestLocationPermission();
   }, []);
 
   useEffect(() => {
-    if (currentLocation) {
-      const newRegion = {
+    // Center map on user location when available
+    if (currentLocation && mapRef.current) {
+      mapRef.current.animateToRegion({
         latitude: currentLocation.latitude,
         longitude: currentLocation.longitude,
         latitudeDelta: 0.05,
         longitudeDelta: 0.05,
-      };
-      setMapRegion(newRegion);
-      mapRef.current?.animateToRegion(newRegion, 1000);
-      loadNearbyParties();
+      }, 1000);
     }
   }, [currentLocation]);
 
@@ -57,160 +65,214 @@ export default function MapScreen() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
-        setHasLocationPermission(true);
-        await watchLocation();
+        startTracking();
+      } else {
+        Alert.alert(
+          'Location Permission',
+          'Please enable location access to see nearby parties and your current position.',
+          [{ text: 'OK' }]
+        );
       }
     } catch (error) {
       console.error('Location permission error:', error);
     }
   };
 
-  const loadNearbyParties = async () => {
-    if (!currentLocation) return;
-    
-    try {
-      await fetchParties({
-        location: currentLocation,
-        radius: API.PARTIES_SEARCH_RADIUS,
-      });
-    } catch (error) {
-      console.error('Failed to load parties:', error);
-    }
-  };
-
-  const handleMarkerPress = (party: Party) => {
+  const handleMarkerPress = useCallback((party: Party) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedParty(party);
-    setShowBottomSheet(true);
-  };
+  }, []);
 
-  const handlePartyJoin = async (party: Party) => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await usePartyStore.getState().joinParty(party.id);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setShowBottomSheet(false);
-    } catch (error) {
-      console.error('Failed to join party:', error);
+  const handleMyLocationPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (currentLocation && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 1000);
+    } else {
+      requestLocationPermission();
     }
+  }, [currentLocation]);
+
+  const handleMapTypeToggle = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setMapType(mapType === 'standard' ? 'satellite' : 'standard');
+  }, [mapType]);
+
+  const getMarkerColor = (party: Party) => {
+    if (party.is_trending) return COLORS.pink;
+    if (party.vibe === 'lit' || party.vibe === 'banger') return COLORS.orange;
+    return COLORS.cyan;
   };
 
-  const renderMarkers = () => {
-    // Limit to 50 markers max
-    const displayParties = parties.slice(0, 50);
-    
-    return displayParties.map((party) => (
-      <Marker
-        key={party.id}
-        coordinate={{
-          latitude: party.latitude,
-          longitude: party.longitude,
-        }}
-        onPress={() => handleMarkerPress(party)}
-      >
-        <View style={styles.markerContainer}>
-          <View style={styles.marker}>
-            <Text style={styles.markerText}>{party.attendee_count}</Text>
-          </View>
-        </View>
-      </Marker>
-    ));
-  };
+  const renderMarker = (party: Party) => (
+    <Marker
+      key={party.id}
+      coordinate={{
+        latitude: party.latitude,
+        longitude: party.longitude,
+      }}
+      onPress={() => handleMarkerPress(party)}
+      pinColor={getMarkerColor(party)}
+    >
+      <View style={[styles.markerContainer, { borderColor: getMarkerColor(party) }]}>
+        <BlurView intensity={15} style={styles.markerBlur}>
+          <LinearGradient
+            colors={[
+              `${getMarkerColor(party)}40`,
+              `${getMarkerColor(party)}20`
+            ]}
+            style={styles.markerGradient}
+          >
+            <Text style={styles.markerText}>
+              {party.attendee_count}
+            </Text>
+            {party.is_trending && (
+              <Ionicons 
+                name="trending-up" 
+                size={12} 
+                color={COLORS.white} 
+                style={styles.trendingIcon}
+              />
+            )}
+          </LinearGradient>
+        </BlurView>
+      </View>
+      
+      <Callout tooltip>
+        <BlurView intensity={20} style={styles.calloutContainer}>
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']}
+            style={styles.calloutGradient}
+          >
+            <Text style={styles.calloutTitle} numberOfLines={1}>
+              {party.title}
+            </Text>
+            <Text style={styles.calloutDescription} numberOfLines={2}>
+              {party.description}
+            </Text>
+            <View style={styles.calloutStats}>
+              <View style={styles.calloutStat}>
+                <Ionicons name="people" size={14} color={COLORS.cyan} />
+                <Text style={styles.calloutStatText}>
+                  {party.attendee_count}/{party.max_attendees || '∞'}
+                </Text>
+              </View>
+              <View style={styles.calloutStat}>
+                <Ionicons name="location" size={14} color={COLORS.gray400} />
+                <Text style={styles.calloutStatText} numberOfLines={1}>
+                  {party.address}
+                </Text>
+              </View>
+            </View>
+          </LinearGradient>
+        </BlurView>
+      </Callout>
+    </Marker>
+  );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
+    <SafeAreaView style={styles.container}>
+      <MapView
+        ref={mapRef}
+        style={styles.map}
+        mapType={mapType}
+        initialRegion={defaultRegion}
+        showsUserLocation={showUserLocation}
+        showsMyLocationButton={false}
+        showsCompass={false}
+        toolbarEnabled={false}
+      >
+        {parties.map(renderMarker)}
+      </MapView>
+
+      {/* Controls */}
+      <View style={styles.controls}>
+        {/* Map Type Toggle */}
         <TouchableOpacity
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            // Open search
-          }}
-          style={styles.searchButton}
+          style={styles.controlButton}
+          onPress={handleMapTypeToggle}
+          activeOpacity={0.8}
         >
-          <Ionicons name="search" size={20} color={COLORS.gray500} />
-          <Text style={styles.searchText}>Search parties...</Text>
+          <BlurView intensity={20} style={styles.controlBlur}>
+            <LinearGradient
+              colors={['rgba(255, 255, 255, 0.15)', 'rgba(255, 255, 255, 0.05)']}
+              style={styles.controlGradient}
+            >
+              <Ionicons 
+                name={mapType === 'standard' ? 'satellite' : 'map'} 
+                size={24} 
+                color={COLORS.white} 
+              />
+            </LinearGradient>
+          </BlurView>
         </TouchableOpacity>
+
+        {/* My Location Button */}
         <TouchableOpacity
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            // Open filters
-          }}
-          style={styles.filterButton}
+          style={styles.controlButton}
+          onPress={handleMyLocationPress}
+          activeOpacity={0.8}
         >
-          <Ionicons name="options" size={20} color={COLORS.white} />
+          <BlurView intensity={20} style={styles.controlBlur}>
+            <LinearGradient
+              colors={currentLocation ? 
+                [COLORS.cyan + '40', COLORS.cyan + '20'] :
+                ['rgba(255, 255, 255, 0.15)', 'rgba(255, 255, 255, 0.05)']
+              }
+              style={styles.controlGradient}
+            >
+              <Ionicons 
+                name="locate" 
+                size={24} 
+                color={currentLocation ? COLORS.cyan : COLORS.white} 
+              />
+            </LinearGradient>
+          </BlurView>
         </TouchableOpacity>
       </View>
 
-      {/* Map */}
-      <MapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={styles.map}
-        initialRegion={mapRegion}
-        showsUserLocation={hasLocationPermission}
-        showsMyLocationButton={false}
-        mapType="standard"
-        customMapStyle={[
-          {
-            elementType: 'geometry',
-            stylers: [{ color: COLORS.dark }],
-          },
-          {
-            elementType: 'labels.text.stroke',
-            stylers: [{ color: COLORS.dark }],
-          },
-          {
-            elementType: 'labels.text.fill',
-            stylers: [{ color: COLORS.gray500 }],
-          },
-        ]}
-      >
-        {/* User Location Marker */}
-        {currentLocation && (
-          <Marker
-            coordinate={{
-              latitude: currentLocation.latitude,
-              longitude: currentLocation.longitude,
-            }}
-            title="You"
+      {/* Legend */}
+      <View style={styles.legend}>
+        <BlurView intensity={15} style={styles.legendBlur}>
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']}
+            style={styles.legendGradient}
           >
-            <View style={styles.userMarker}>
-              <View style={styles.userMarkerInner} />
+            <Text style={styles.legendTitle}>Party Types</Text>
+            <View style={styles.legendItems}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: COLORS.pink }]} />
+                <Text style={styles.legendText}>Trending</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: COLORS.orange }]} />
+                <Text style={styles.legendText}>Lit/Banger</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: COLORS.cyan }]} />
+                <Text style={styles.legendText}>Regular</Text>
+              </View>
             </View>
-          </Marker>
-        )}
+          </LinearGradient>
+        </BlurView>
+      </View>
 
-        {/* Party Markers */}
-        {renderMarkers()}
-      </MapView>
-
-      {/* Bottom Sheet with Party Preview */}
-      <BottomSheet
-        visible={showBottomSheet}
-        onClose={() => setShowBottomSheet(false)}
-        height={0.4}
-      >
-        {selectedParty && (
-          <View style={styles.bottomSheetContent}>
-            <PartyCard
-              party={selectedParty}
-              onPress={() => {
-                setShowBottomSheet(false);
-                navigation.navigate('PartyDetail' as never, { partyId: selectedParty.id } as never);
-              }}
-              onJoinPress={() => handlePartyJoin(selectedParty)}
-            />
-          </View>
-        )}
-      </BottomSheet>
-
-      {/* Loading Overlay */}
-      {loading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color={COLORS.cyan} />
-        </View>
-      )}
+      {/* Stats */}
+      <View style={styles.stats}>
+        <BlurView intensity={15} style={styles.statsBlur}>
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']}
+            style={styles.statsGradient}
+          >
+            <Text style={styles.statsNumber}>{parties.length}</Text>
+            <Text style={styles.statsLabel}>Active Parties</Text>
+          </LinearGradient>
+        </BlurView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -220,88 +282,168 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.dark,
   },
-  header: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    gap: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  searchButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 12,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    gap: SPACING.sm,
-  },
-  searchText: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.gray500,
-  },
-  filterButton: {
-    padding: SPACING.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 12,
-  },
   map: {
     flex: 1,
   },
-  markerContainer: {
+  controls: {
+    position: 'absolute',
+    top: 100,
+    right: SPACING.lg,
+    gap: SPACING.md,
+  },
+  controlButton: {
+    width: 50,
+    height: 50,
+  },
+  controlBlur: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 25,
+    overflow: 'hidden',
+    ...SHADOWS.medium,
+  },
+  controlGradient: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 25,
   },
-  marker: {
+  legend: {
+    position: 'absolute',
+    bottom: 120,
+    left: SPACING.lg,
+    maxWidth: width * 0.6,
+  },
+  legendBlur: {
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+    ...SHADOWS.medium,
+  },
+  legendGradient: {
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: RADIUS.lg,
+  },
+  legendTitle: {
+    ...TYPOGRAPHY.bodyBold,
+    color: COLORS.white,
+    marginBottom: SPACING.sm,
+    fontWeight: '600' as const,
+  },
+  legendItems: {
+    gap: SPACING.xs,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendText: {
+    ...TYPOGRAPHY.caption1,
+    color: COLORS.gray300,
+    fontWeight: '500' as const,
+  },
+  stats: {
+    position: 'absolute',
+    bottom: 120,
+    right: SPACING.lg,
+  },
+  statsBlur: {
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+    ...SHADOWS.medium,
+  },
+  statsGradient: {
+    padding: SPACING.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: RADIUS.lg,
+    minWidth: 80,
+  },
+  statsNumber: {
+    ...TYPOGRAPHY.title2,
+    color: COLORS.cyan,
+    fontWeight: '700' as const,
+  },
+  statsLabel: {
+    ...TYPOGRAPHY.caption2,
+    color: COLORS.gray400,
+    textAlign: 'center',
+    fontWeight: '500' as const,
+  },
+  markerContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: COLORS.pink,
-    borderWidth: 3,
-    borderColor: COLORS.white,
+    borderWidth: 2,
+    overflow: 'hidden',
+  },
+  markerBlur: {
+    flex: 1,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  markerGradient: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+    position: 'relative',
   },
   markerText: {
     ...TYPOGRAPHY.caption1,
     color: COLORS.white,
-    fontWeight: '700',
+    fontWeight: '700' as const,
+    fontSize: 12,
   },
-  userMarker: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: COLORS.cyan,
-    borderWidth: 3,
-    borderColor: COLORS.white,
-    shadowColor: COLORS.cyan,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 8,
-    elevation: 8,
+  trendingIcon: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
   },
-  userMarkerInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.white,
-    alignSelf: 'center',
-    marginTop: 2,
+  calloutContainer: {
+    width: 250,
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
   },
-  bottomSheetContent: {
-    flex: 1,
+  calloutGradient: {
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: RADIUS.md,
   },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  calloutTitle: {
+    ...TYPOGRAPHY.bodyBold,
+    color: COLORS.white,
+    fontWeight: '600' as const,
+    marginBottom: SPACING.xs,
+  },
+  calloutDescription: {
+    ...TYPOGRAPHY.caption1,
+    color: COLORS.gray300,
+    lineHeight: 16,
+    marginBottom: SPACING.sm,
+  },
+  calloutStats: {
+    gap: SPACING.xs,
+  },
+  calloutStat: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: SPACING.xs,
+  },
+  calloutStatText: {
+    ...TYPOGRAPHY.caption2,
+    color: COLORS.gray400,
+    fontWeight: '500' as const,
+    flex: 1,
   },
 });

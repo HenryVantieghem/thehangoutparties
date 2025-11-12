@@ -1,158 +1,267 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   FlatList,
   RefreshControl,
+  ActivityIndicator,
   TouchableOpacity,
   Animated,
   Dimensions,
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS, SPACING, TYPOGRAPHY, API } from '../constants';
-import { PartyCard, EmptyState, LoadingSpinner } from '../components';
-import { usePartyStore, usePhotoStore } from '../stores';
+import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
+
+import { PartyCard } from '../components/PartyCard';
+import { EmptyState } from '../components/EmptyState';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '../constants';
+import { usePartyStore, useLocationStore } from '../stores';
 import { Party } from '../types';
+import { mockParties } from '../utils';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
-export default function DiscoverScreen() {
+export function DiscoverScreen() {
   const navigation = useNavigation();
-  const { parties, fetchParties, loading } = usePartyStore();
-  const { photos } = usePhotoStore();
+  const { parties, setParties, loading, setLoading } = usePartyStore();
+  const { currentLocation, startTracking } = useLocationStore();
+  
   const [refreshing, setRefreshing] = useState(false);
-  const [page, setPage] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const doubleTapRef = useRef<{ lastTap: number; timer: NodeJS.Timeout | null }>({
-    lastTap: 0,
-    timer: null,
-  });
+  const [filter, setFilter] = useState<'all' | 'trending' | 'nearby'>('all');
+  
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
-    loadParties();
+    loadInitialParties();
+    requestLocationAndTrack();
+    
+    // Entrance animation
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
 
-  const loadParties = async (pageNum: number = 0) => {
+  const requestLocationAndTrack = async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status === 'granted') {
+      startTracking();
+    }
+  };
+
+  const loadInitialParties = async () => {
+    setLoading(true);
     try {
-      await fetchParties({
-        page: pageNum,
-        limit: API.PARTY_PAGINATION_LIMIT,
-      });
-      if (parties.length < (pageNum + 1) * API.PARTY_PAGINATION_LIMIT) {
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Load mock parties for now
+      setParties(mockParties.slice(0, 10));
+      setHasMore(mockParties.length > 10);
+    } catch (error) {
+      console.error('Failed to load parties:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefresh = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setRefreshing(true);
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setParties(mockParties.slice(0, 10));
+      setHasMore(mockParties.length > 10);
+    } catch (error) {
+      console.error('Failed to refresh:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  const handleLoadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || parties.length === 0) return;
+    
+    setLoadingMore(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const currentLength = parties.length;
+      const newParties = mockParties.slice(currentLength, currentLength + 10);
+      
+      if (newParties.length > 0) {
+        setParties([...parties, ...newParties]);
+        setHasMore(currentLength + newParties.length < mockParties.length);
+      } else {
         setHasMore(false);
       }
     } catch (error) {
-      console.error('Failed to load parties:', error);
+      console.error('Failed to load more:', error);
+    } finally {
+      setLoadingMore(false);
     }
-  };
+  }, [parties, loadingMore, hasMore]);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    setPage(0);
-    setHasMore(true);
-    await loadParties(0);
-    setRefreshing(false);
-  };
-
-  const handleLoadMore = () => {
-    if (!loading && hasMore) {
-      const nextPage = page + 1;
-      setPage(nextPage);
-      loadParties(nextPage);
-    }
-  };
-
-  const handlePartyPress = (party: Party) => {
+  const handlePartyPress = useCallback((party: Party) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.navigate('PartyDetail' as never, { partyId: party.id } as never);
-  };
+  }, [navigation]);
 
-  const handleDoubleTap = (party: Party) => {
-    const now = Date.now();
-    const DOUBLE_PRESS_DELAY = 300;
+  const handleLikeParty = useCallback(async (partyId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // TODO: Implement like functionality
+    console.log('Liked party:', partyId);
+  }, []);
 
-    if (doubleTapRef.current.lastTap && now - doubleTapRef.current.lastTap < DOUBLE_PRESS_DELAY) {
-      // Double tap detected
-      if (doubleTapRef.current.timer) {
-        clearTimeout(doubleTapRef.current.timer);
+  const handleJoinParty = useCallback(async (partyId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // TODO: Implement join functionality
+    console.log('Joined party:', partyId);
+  }, []);
+
+  const handleFilterChange = useCallback((newFilter: typeof filter) => {
+    Haptics.selectionAsync();
+    setFilter(newFilter);
+    
+    // Filter parties based on selection
+    if (newFilter === 'trending') {
+      const trending = mockParties.filter(p => p.is_trending);
+      setParties(trending.slice(0, 10));
+    } else if (newFilter === 'nearby') {
+      // Sort by distance if location available
+      if (currentLocation) {
+        const sorted = [...mockParties].sort((a, b) => {
+          // Simple distance calculation (would use proper distance formula)
+          const distA = Math.abs(a.latitude - currentLocation.latitude) + 
+                       Math.abs(a.longitude - currentLocation.longitude);
+          const distB = Math.abs(b.latitude - currentLocation.latitude) + 
+                       Math.abs(b.longitude - currentLocation.longitude);
+          return distA - distB;
+        });
+        setParties(sorted.slice(0, 10));
       }
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      // Like party or show heart animation
-      // In production: likeParty(party.id)
     } else {
-      doubleTapRef.current.lastTap = now;
-      doubleTapRef.current.timer = setTimeout(() => {
-        handlePartyPress(party);
-      }, DOUBLE_PRESS_DELAY);
+      setParties(mockParties.slice(0, 10));
     }
-  };
+  }, [currentLocation]);
 
-  const renderPartyCard = ({ item, index }: { item: Party; index: number }) => {
-    const partyPhotos = photos.filter((p) => p.party_id === item.id);
+  const renderHeader = () => (
+    <View style={styles.header}>
+      <Text style={styles.title}>Discover</Text>
+      <Text style={styles.subtitle}>
+        {currentLocation ? '📍 Parties near you' : 'Find parties happening now'}
+      </Text>
+      
+      {/* Filter Pills */}
+      <View style={styles.filterContainer}>
+        {(['all', 'trending', 'nearby'] as const).map((filterType) => (
+          <TouchableOpacity
+            key={filterType}
+            onPress={() => handleFilterChange(filterType)}
+            style={[
+              styles.filterPill,
+              filter === filterType && styles.filterPillActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.filterPillText,
+                filter === filterType && styles.filterPillTextActive,
+              ]}
+            >
+              {filterType === 'all' && '🎉 All'}
+              {filterType === 'trending' && '🔥 Trending'}
+              {filterType === 'nearby' && '📍 Nearby'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
+  const renderParty = ({ item, index }: { item: Party; index: number }) => (
+    <Animated.View
+      style={{
+        opacity: fadeAnim,
+        transform: [
+          {
+            translateY: slideAnim.interpolate({
+              inputRange: [0, 50],
+              outputRange: [0, 50 + index * 10],
+            }),
+          },
+        ],
+      }}
+    >
+      <PartyCard
+        party={item}
+        onPress={() => handlePartyPress(item)}
+        onLike={() => handleLikeParty(item.id)}
+        onJoin={() => handleJoinParty(item.id)}
+        currentUserId="current-user-id"
+      />
+    </Animated.View>
+  );
+
+  const renderFooter = () => {
+    if (!loadingMore) return null;
     
     return (
-      <View style={styles.cardWrapper}>
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={() => handleDoubleTap(item)}
-        >
-          <PartyCard
-            party={item}
-            photos={partyPhotos.map((p) => p.photo_url)}
-            onPress={() => handlePartyPress(item)}
-            onJoinPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              // Join party logic
-            }}
-            testID={`party-card-${index}`}
-          />
-        </TouchableOpacity>
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="small" color={COLORS.cyan} />
+        <Text style={styles.loadingMoreText}>Loading more parties...</Text>
       </View>
     );
   };
 
   const renderEmpty = () => (
     <EmptyState
-      message="No parties nearby"
-      subtitle="Be the first to create a party in your area!"
-      icon="🎉"
+      icon="calendar-outline"
+      title="No parties yet"
+      message="Be the first to start a party in your area!"
+      actionText="Create Party"
+      onAction={() => navigation.navigate('CreateParty' as never)}
     />
   );
 
-  const renderFooter = () => {
-    if (!loading) return null;
+  if (loading && parties.length === 0) {
     return (
-      <View style={styles.footer}>
-        <LoadingSpinner size="small" />
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.cyan} />
+          <Text style={styles.loadingText}>Finding parties...</Text>
+        </View>
+      </SafeAreaView>
     );
-  };
+  }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Discover</Text>
-        <TouchableOpacity
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            // Open filters
-          }}
-          style={styles.filterButton}
-        >
-          <Text style={styles.filterText}>Filter</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Party Feed */}
+    <SafeAreaView style={styles.container}>
       <FlatList
         data={parties}
-        renderItem={renderPartyCard}
+        renderItem={renderParty}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={renderHeader}
+        ListFooterComponent={renderFooter}
+        ListEmptyComponent={renderEmpty}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -164,12 +273,23 @@ export default function DiscoverScreen() {
         }
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.5}
-        ListEmptyComponent={!loading ? renderEmpty : null}
-        ListFooterComponent={renderFooter}
         removeClippedSubviews={true}
-        maxToRenderPerBatch={10}
+        maxToRenderPerBatch={5}
         windowSize={10}
+        initialNumToRender={5}
       />
+      
+      {/* Floating Map Button */}
+      <TouchableOpacity
+        style={styles.floatingButton}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          navigation.navigate('Map' as never);
+        }}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="map" size={24} color={COLORS.white} />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -179,35 +299,80 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.dark,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  content: {
+    paddingBottom: 100,
   },
-  headerTitle: {
-    ...TYPOGRAPHY.title1,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: SPACING.md,
+    ...TYPOGRAPHY.body,
+    color: COLORS.gray500,
+  },
+  header: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.sm,
+  },
+  title: {
+    ...TYPOGRAPHY.largeTitle,
+    color: COLORS.white,
+    marginBottom: SPACING.xs,
+  },
+  subtitle: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.gray500,
+    marginBottom: SPACING.lg,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  filterPill: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  filterPillActive: {
+    backgroundColor: COLORS.cyan,
+    borderColor: COLORS.cyan,
+  },
+  filterPillText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.gray400,
+    fontWeight: '600' as const,
+  },
+  filterPillTextActive: {
     color: COLORS.white,
   },
-  filterButton: {
-    padding: SPACING.xs,
-  },
-  filterText: {
-    ...TYPOGRAPHY.bodyBold,
-    color: COLORS.cyan,
-  },
-  listContent: {
-    padding: SPACING.md,
-    paddingBottom: SPACING.xxxl,
-  },
-  cardWrapper: {
-    marginBottom: SPACING.md,
-  },
-  footer: {
-    padding: SPACING.lg,
+  footerLoader: {
+    paddingVertical: SPACING.xl,
     alignItems: 'center',
+  },
+  loadingMoreText: {
+    marginTop: SPACING.sm,
+    ...TYPOGRAPHY.caption1,
+    color: COLORS.gray500,
+  },
+  floatingButton: {
+    position: 'absolute',
+    bottom: 100,
+    right: SPACING.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.pink,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.pink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
 });

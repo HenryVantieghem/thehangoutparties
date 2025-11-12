@@ -1,216 +1,405 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Platform, TouchableOpacity, View } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuthStore } from '../stores';
-import { COLORS } from '../constants';
+import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Screens
-import OnboardingScreen from '../screens/OnboardingScreen';
-import SignInScreen from '../screens/auth/SignInScreen';
-import SignUpScreen from '../screens/auth/SignUpScreen';
-import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
-import ResetPasswordEmailSentScreen from '../screens/auth/ResetPasswordEmailSentScreen';
+import { useAuthStore } from '../stores';
+import { COLORS, RADIUS, SPACING } from '../constants';
+
+// Auth Screens
+import { SignInScreen } from '../screens/auth/SignInScreen';
+import { SignUpScreen } from '../screens/auth/SignUpScreen';
+import { ResetPasswordScreen } from '../screens/auth/ResetPasswordScreen';
+import { OnboardingScreen } from '../screens/OnboardingScreen';
+
+// Main Screens
 import DiscoverScreen from '../screens/DiscoverScreen';
 import MapScreen from '../screens/MapScreen';
 import CreatePartyScreen from '../screens/CreatePartyScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+
+// Modal Screens
 import PartyDetailModal from '../screens/PartyDetailModal';
 import PhotoDetailModal from '../screens/PhotoDetailModal';
 import FriendListScreen from '../screens/FriendListScreen';
 
-export type RootStackParamList = {
-  Onboarding: undefined;
-  Auth: undefined;
-  Main: undefined;
-  PartyDetail: { partyId: string };
-  PhotoDetail: { photoId: string };
-  FriendList: undefined;
-};
+// Stack and Tab navigators
+const AuthStack = createNativeStackNavigator();
+const MainStack = createNativeStackNavigator();
+const TabNavigator = createBottomTabNavigator();
+const RootStack = createNativeStackNavigator();
 
-export type AuthStackParamList = {
-  SignIn: undefined;
-  SignUp: undefined;
-  ResetPassword: undefined;
-  ResetPasswordEmailSent: { email: string };
-};
+// Tab Icon component with glassmorphism
+function TabIcon({ 
+  iconName, 
+  focused, 
+  size = 24 
+}: { 
+  iconName: string; 
+  focused: boolean; 
+  size?: number;
+}) {
+  return (
+    <View
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: focused ? 'rgba(0, 217, 255, 0.2)' : 'transparent',
+      }}
+    >
+      <Ionicons
+        name={iconName as any}
+        size={size}
+        color={focused ? COLORS.cyan : COLORS.gray500}
+      />
+    </View>
+  );
+}
 
-export type MainTabParamList = {
-  Discover: undefined;
-  Map: undefined;
-  Create: undefined;
-  Messages: undefined;
-  Profile: undefined;
-};
+// Create Party button with special styling
+function CreatePartyButton({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        onPress();
+      }}
+      style={{
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: COLORS.pink,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: COLORS.pink,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 8,
+        marginBottom: 20, // Lift it up a bit
+      }}
+    >
+      <Ionicons name="add" size={32} color={COLORS.white} />
+    </TouchableOpacity>
+  );
+}
 
-const RootStack = createNativeStackNavigator<RootStackParamList>();
-const AuthStack = createNativeStackNavigator<AuthStackParamList>();
-const MainTabs = createBottomTabNavigator<MainTabParamList>();
+// Custom Tab Bar with glassmorphism
+function CustomTabBar({ state, descriptors, navigation }: any) {
+  const insets = useSafeAreaInsets();
+  
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        paddingBottom: insets.bottom || SPACING.lg,
+      }}
+    >
+      <BlurView
+        intensity={80}
+        tint="dark"
+        style={{
+          flexDirection: 'row',
+          backgroundColor: 'rgba(10, 14, 39, 0.8)',
+          borderTopWidth: 1,
+          borderTopColor: 'rgba(255, 255, 255, 0.1)',
+          paddingTop: SPACING.lg,
+          paddingHorizontal: SPACING.lg,
+        }}
+      >
+        {state.routes.map((route: any, index: number) => {
+          const { options } = descriptors[route.key];
+          const isFocused = state.index === index;
 
-/**
- * Auth Stack Navigator
- */
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (!isFocused && !event.defaultPrevented) {
+              Haptics.selectionAsync();
+              navigation.navigate(route.name);
+            }
+          };
+
+          const onLongPress = () => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            navigation.emit({
+              type: 'tabLongPress',
+              target: route.key,
+            });
+          };
+
+          // Special handling for Create button
+          if (route.name === 'CreateParty') {
+            return (
+              <View
+                key={index}
+                style={{
+                  flex: 1,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <CreatePartyButton onPress={onPress} />
+              </View>
+            );
+          }
+
+          // Get the appropriate icon for each tab
+          let iconName;
+          switch (route.name) {
+            case 'Discover':
+              iconName = isFocused ? 'home' : 'home-outline';
+              break;
+            case 'Map':
+              iconName = isFocused ? 'map' : 'map-outline';
+              break;
+            case 'Messages':
+              iconName = isFocused ? 'chatbubbles' : 'chatbubbles-outline';
+              break;
+            case 'Profile':
+              iconName = isFocused ? 'person' : 'person-outline';
+              break;
+            default:
+              iconName = 'ellipse';
+          }
+
+          return (
+            <TouchableOpacity
+              key={index}
+              accessibilityRole="button"
+              accessibilityState={isFocused ? { selected: true } : {}}
+              accessibilityLabel={options.tabBarAccessibilityLabel}
+              testID={options.tabBarTestID}
+              onPress={onPress}
+              onLongPress={onLongPress}
+              style={{
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingVertical: SPACING.sm,
+              }}
+            >
+              <TabIcon iconName={iconName} focused={isFocused} />
+            </TouchableOpacity>
+          );
+        })}
+      </BlurView>
+    </View>
+  );
+}
+
+// Auth Stack Navigator
 function AuthNavigator() {
   return (
     <AuthStack.Navigator
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: COLORS.dark },
+        gestureEnabled: true,
+        animation: 'slide_from_right',
       }}
     >
       <AuthStack.Screen name="SignIn" component={SignInScreen} />
       <AuthStack.Screen name="SignUp" component={SignUpScreen} />
       <AuthStack.Screen name="ResetPassword" component={ResetPasswordScreen} />
-      <AuthStack.Screen name="ResetPasswordEmailSent" component={ResetPasswordEmailSentScreen} />
     </AuthStack.Navigator>
   );
 }
 
-/**
- * Main Tab Navigator with glassmorphism styling
- */
-function MainNavigator() {
+// Main Tab Navigator
+function MainTabNavigator() {
   return (
-    <MainTabs.Navigator
-      screenOptions={({ route }) => ({
+    <TabNavigator.Navigator
+      tabBar={(props) => <CustomTabBar {...props} />}
+      screenOptions={{
         headerShown: false,
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName: keyof typeof Ionicons.glyphMap = 'home';
-
-          if (route.name === 'Discover') {
-            iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Map') {
-            iconName = focused ? 'map' : 'map-outline';
-          } else if (route.name === 'Create') {
-            iconName = focused ? 'add-circle' : 'add-circle-outline';
-          } else if (route.name === 'Messages') {
-            iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
-          } else if (route.name === 'Profile') {
-            iconName = focused ? 'person' : 'person-outline';
-          }
-
-          return <Ionicons name={iconName} size={size} color={color} />;
-        },
-        tabBarActiveTintColor: COLORS.cyan,
-        tabBarInactiveTintColor: COLORS.gray600,
-        tabBarStyle: {
-          backgroundColor: 'rgba(26, 31, 58, 0.95)',
-          borderTopWidth: 1,
-          borderTopColor: 'rgba(255, 255, 255, 0.1)',
-          height: 88,
-          paddingBottom: 20,
-          paddingTop: 8,
-        },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
-        },
-      })}
+      }}
     >
-      <MainTabs.Screen name="Discover" component={DiscoverScreen} />
-      <MainTabs.Screen name="Map" component={MapScreen} />
-      <MainTabs.Screen
-        name="Create"
-        component={CreatePartyScreen}
+      <TabNavigator.Screen
+        name="Discover"
+        component={DiscoverScreen}
         options={{
-          tabBarLabel: '',
-          tabBarIcon: ({ focused, size }) => (
-            <Ionicons
-              name={focused ? 'add-circle' : 'add-circle-outline'}
-              size={size + 8}
-              color={focused ? COLORS.cyan : COLORS.gray600}
-            />
-          ),
+          tabBarLabel: 'Discover',
         }}
       />
-      <MainTabs.Screen name="Messages" component={MessagesScreen} />
-      <MainTabs.Screen name="Profile" component={ProfileScreen} />
-    </MainTabs.Navigator>
+      <TabNavigator.Screen
+        name="Map"
+        component={MapScreen}
+        options={{
+          tabBarLabel: 'Map',
+        }}
+      />
+      <TabNavigator.Screen
+        name="CreateParty"
+        component={CreatePartyScreen}
+        options={{
+          tabBarLabel: 'Create',
+        }}
+      />
+      <TabNavigator.Screen
+        name="Messages"
+        component={MessagesScreen}
+        options={{
+          tabBarLabel: 'Messages',
+        }}
+      />
+      <TabNavigator.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          tabBarLabel: 'Profile',
+        }}
+      />
+    </TabNavigator.Navigator>
   );
 }
 
-/**
- * Root Navigator with conditional rendering based on auth state
- */
-export default function RootNavigator() {
-  const { user } = useAuthStore();
-  const [isOnboarded, setIsOnboarded] = React.useState(false);
-
-  React.useEffect(() => {
-    // Check if user has completed onboarding
-    // In production, check AsyncStorage or user preferences
-    AsyncStorage.getItem('onboarding_completed').then((value) => {
-      setIsOnboarded(value === 'true');
-    });
-  }, []);
-
+// Main Stack Navigator (wraps tabs)
+function MainNavigator() {
   return (
-    <NavigationContainer
-      linking={{
-        prefixes: ['thehangout://'],
-        config: {
-          screens: {
-            Main: {
-              screens: {
-                Discover: 'discover',
-                Map: 'map',
-                Create: 'create',
-                Messages: 'messages',
-                Profile: 'profile',
-              },
-            },
-            PartyDetail: 'party/:partyId',
-            PhotoDetail: 'photo/:photoId',
-            FriendList: 'friends',
-          },
-        },
+    <MainStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        gestureEnabled: true,
       }}
     >
-      <RootStack.Navigator
-        screenOptions={{
-          headerShown: false,
-          animation: 'slide_from_right',
-          contentStyle: { backgroundColor: COLORS.dark },
-        }}
-      >
-        {!isOnboarded ? (
-          <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
-        ) : !user ? (
-          <RootStack.Screen name="Auth" component={AuthNavigator} />
-        ) : (
-          <>
-            <RootStack.Screen name="Main" component={MainNavigator} />
+      <MainStack.Screen name="MainTabs" component={MainTabNavigator} />
+    </MainStack.Navigator>
+  );
+}
+
+// Root Stack Navigator (includes modals)
+function RootStackNavigator() {
+  const { user, isAuthenticated, loading } = useAuthStore();
+
+  // Show loading screen while checking auth
+  if (loading) {
+    return null; // Could show a loading screen here
+  }
+
+  return (
+    <RootStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        presentation: 'modal',
+        gestureEnabled: true,
+      }}
+    >
+      {!isAuthenticated ? (
+        <>
+          <RootStack.Screen 
+            name="Auth" 
+            component={AuthNavigator}
+            options={{ gestureEnabled: false }}
+          />
+          <RootStack.Screen 
+            name="Onboarding" 
+            component={OnboardingScreen}
+            options={{ gestureEnabled: false }}
+          />
+        </>
+      ) : (
+        <>
+          <RootStack.Screen 
+            name="Main" 
+            component={MainNavigator}
+            options={{ gestureEnabled: false }}
+          />
+          
+          {/* Modal Screens */}
+          <RootStack.Group screenOptions={{ presentation: 'modal' }}>
             <RootStack.Screen
               name="PartyDetail"
               component={PartyDetailModal}
               options={{
-                presentation: 'fullScreenModal',
-                animation: 'slide_from_bottom',
+                gestureEnabled: true,
+                gestureDirection: 'vertical',
               }}
             />
             <RootStack.Screen
               name="PhotoDetail"
               component={PhotoDetailModal}
               options={{
-                presentation: 'fullScreenModal',
-                animation: 'slide_from_bottom',
+                gestureEnabled: true,
+                gestureDirection: 'vertical',
               }}
             />
             <RootStack.Screen
               name="FriendList"
-              component={FriendListScreen}
+              component={FriendListModal}
               options={{
-                presentation: 'fullScreenModal',
-                animation: 'slide_from_bottom',
+                gestureEnabled: true,
+                gestureDirection: 'vertical',
               }}
             />
-          </>
-        )}
-      </RootStack.Navigator>
-    </NavigationContainer>
+            <RootStack.Screen
+              name="Settings"
+              component={SettingsModal}
+              options={{
+                gestureEnabled: true,
+                gestureDirection: 'vertical',
+              }}
+            />
+          </RootStack.Group>
+        </>
+      )}
+    </RootStack.Navigator>
   );
 }
 
+// Linking configuration for deep links
+const linking = {
+  prefixes: ['thehangout://'],
+  config: {
+    screens: {
+      Auth: {
+        screens: {
+          SignIn: 'signin',
+          SignUp: 'signup',
+          ResetPassword: 'reset-password',
+        },
+      },
+      Main: {
+        screens: {
+          Discover: 'discover',
+          Map: 'map',
+          Create: 'create',
+          Messages: 'messages',
+          Profile: 'profile',
+        },
+      },
+      PartyDetail: 'party/:partyId',
+      PhotoDetail: 'photo/:photoId',
+      FriendList: 'friends',
+    },
+  },
+};
+
+export function RootNavigator() {
+  const { initializeAuth } = useAuthStore();
+
+  useEffect(() => {
+    initializeAuth();
+  }, []);
+
+  return (
+    <NavigationContainer linking={linking}>
+      <RootStackNavigator />
+    </NavigationContainer>
+  );
+}

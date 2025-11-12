@@ -1,1181 +1,511 @@
-import { formatDistanceToNow, format, differenceInSeconds, isToday as dateFnsIsToday } from 'date-fns';
-import { Location, Party } from '../types';
-import { VALIDATION, API } from '../constants';
+import { Party, User } from '../types';
 
-// ============================================================================
-// LOCATION UTILITIES
-// ============================================================================
+// Email validation
+export const validateEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
 
-/**
- * Calculate the distance between two geographic coordinates using the Haversine formula
- * @param lat1 - Latitude of the first point
- * @param lon1 - Longitude of the first point
- * @param lat2 - Latitude of the second point
- * @param lon2 - Longitude of the second point
- * @returns Distance in kilometers
- * @throws Error if coordinates are invalid
- */
-export function calculateDistance(
+// Username validation
+export const validateUsername = (username: string): { valid: boolean; error?: string } => {
+  if (username.length < 3) {
+    return { valid: false, error: 'Username must be at least 3 characters' };
+  }
+  if (username.length > 20) {
+    return { valid: false, error: 'Username must be at most 20 characters' };
+  }
+  if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+    return { valid: false, error: 'Username can only contain letters, numbers, and underscores' };
+  }
+  return { valid: true };
+};
+
+// Distance calculation between two coordinates (Haversine formula)
+export const calculateDistance = (
   lat1: number,
-  lon1: number,
+  lng1: number,
   lat2: number,
-  lon2: number
-): number {
-  try {
-    if (
-      typeof lat1 !== 'number' ||
-      typeof lon1 !== 'number' ||
-      typeof lat2 !== 'number' ||
-      typeof lon2 !== 'number'
-    ) {
-      throw new Error('All coordinates must be valid numbers');
-    }
+  lng2: number
+): number => {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLng = (lng2 - lng1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
 
-    if (lat1 < -90 || lat1 > 90 || lat2 < -90 || lat2 > 90) {
-      throw new Error('Latitude must be between -90 and 90 degrees');
-    }
-
-    if (lon1 < -180 || lon1 > 180 || lon2 < -180 || lon2 > 180) {
-      throw new Error('Longitude must be between -180 and 180 degrees');
-    }
-
-    const R = 6371; // Earth's radius in kilometers
-    const dLat = toRadians(lat2 - lat1);
-    const dLon = toRadians(lon2 - lon1);
-
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRadians(lat1)) *
-        Math.cos(toRadians(lat2)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  } catch (error) {
-    throw new Error(`Failed to calculate distance: ${getErrorMessage(error)}`);
+// Format distance for display
+export const formatDistance = (km: number): string => {
+  if (km < 1) {
+    return `${Math.round(km * 1000)} m away`;
   }
-}
+  return `${km.toFixed(1)} km away`;
+};
 
-/**
- * Convert degrees to radians
- */
-function toRadians(degrees: number): number {
-  return degrees * (Math.PI / 180);
-}
+// Time ago formatting
+export const formatTimeAgo = (date: Date): string => {
+  const now = new Date();
+  const diffInMs = now.getTime() - date.getTime();
+  const diffInSec = Math.floor(diffInMs / 1000);
+  const diffInMin = Math.floor(diffInSec / 60);
+  const diffInHour = Math.floor(diffInMin / 60);
+  const diffInDay = Math.floor(diffInHour / 24);
 
-/**
- * Check if a location is near a home location within a specified radius
- * @param currentLocation - Current location coordinates
- * @param homeLocation - Home location coordinates
- * @param radiusKm - Radius in kilometers (default: 5km)
- * @returns True if location is within the radius
- */
-export function isLocationNearHome(
-  currentLocation: Location,
-  homeLocation: Location,
-  radiusKm: number = 5
-): boolean {
-  try {
-    if (!currentLocation || !homeLocation) {
-      throw new Error('Both locations are required');
-    }
+  if (diffInSec < 60) return `${diffInSec}s ago`;
+  if (diffInMin < 60) return `${diffInMin}m ago`;
+  if (diffInHour < 24) return `${diffInHour}h ago`;
+  if (diffInDay < 7) return `${diffInDay}d ago`;
+  
+  return date.toLocaleDateString();
+};
 
-    const distance = calculateDistance(
-      currentLocation.latitude,
-      currentLocation.longitude,
-      homeLocation.latitude,
-      homeLocation.longitude
-    );
+// String utilities
+export const truncateString = (str: string, length: number): string => {
+  if (str.length <= length) return str;
+  return str.substring(0, length) + '...';
+};
 
-    return distance <= radiusKm;
-  } catch (error) {
-    logError('isLocationNearHome', error);
-    return false;
+export const capitalizeWords = (str: string): string => {
+  return str.replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+// Number formatting
+export const formatNumber = (num: number): string => {
+  if (num < 1000) return num.toString();
+  if (num < 1000000) return (num / 1000).toFixed(1) + 'K';
+  return (num / 1000000).toFixed(1) + 'M';
+};
+
+export const formatNumberCompact = (num: number): string => {
+  if (num < 1000) return num.toString();
+  if (num < 1000000) return (num / 1000).toFixed(1) + 'K';
+  return (num / 1000000).toFixed(1) + 'M';
+};
+
+// Error handling
+export const getErrorMessage = (error: any): string => {
+  if (typeof error === 'string') return error;
+  if (error?.message) return error.message;
+  if (error?.error_description) return error.error_description;
+  return 'An unexpected error occurred';
+};
+
+export const logError = (context: string, error: unknown): void => {
+  console.error(`[${context}]`, error);
+};
+
+export const isNetworkError = (error: unknown): boolean => {
+  if (typeof error === 'object' && error !== null) {
+    const err = error as any;
+    return err?.code === 'NETWORK_ERROR' || err?.message?.includes('network') || err?.message?.includes('fetch');
   }
-}
+  return false;
+};
 
-/**
- * Format distance in kilometers to human-readable string
- * @param km - Distance in kilometers
- * @returns Formatted string like "2.5 km away" or "500 m away"
- */
-export function formatDistance(km: number): string {
-  try {
-    if (typeof km !== 'number' || km < 0) {
-      return 'Unknown distance';
-    }
-
-    if (km < 1) {
-      const meters = Math.round(km * 1000);
-      return `${meters} m away`;
-    }
-
-    if (km < 10) {
-      return `${km.toFixed(1)} km away`;
-    }
-
-    return `${Math.round(km)} km away`;
-  } catch (error) {
-    logError('formatDistance', error);
-    return 'Unknown distance';
+export const isAuthError = (error: unknown): boolean => {
+  if (typeof error === 'object' && error !== null) {
+    const err = error as any;
+    return err?.code === 'AUTH_ERROR' || err?.status === 401 || err?.message?.includes('auth');
   }
-}
-
-/**
- * Get address from coordinates using reverse geocoding
- * Note: This is a placeholder - in production, use a geocoding service like Google Maps API
- * @param latitude - Latitude coordinate
- * @param longitude - Longitude coordinate
- * @returns Promise resolving to address string
- */
-export async function getAddressFromCoordinates(
-  latitude: number,
-  longitude: number
-): Promise<string> {
-  try {
-    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-      throw new Error('Invalid coordinates');
-    }
-
-    // Placeholder implementation
-    // In production, integrate with a geocoding service
-    // Example: Google Maps Geocoding API, Mapbox Geocoding API, etc.
-    return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-  } catch (error) {
-    throw new Error(`Failed to get address: ${getErrorMessage(error)}`);
-  }
-}
-
-/**
- * Get coordinates from address using geocoding
- * Note: This is a placeholder - in production, use a geocoding service
- * @param address - Address string
- * @returns Promise resolving to coordinates object
- */
-export async function getCoordinatesFromAddress(address: string): Promise<{
-  latitude: number;
-  longitude: number;
-}> {
-  try {
-    if (typeof address !== 'string' || !address.trim()) {
-      throw new Error('Valid address is required');
-    }
-
-    // Placeholder implementation
-    // In production, integrate with a geocoding service
-    throw new Error('Geocoding not implemented');
-  } catch (error) {
-    throw new Error(`Failed to get coordinates: ${getErrorMessage(error)}`);
-  }
-}
-
-// ============================================================================
-// DATE UTILITIES
-// ============================================================================
-
-/**
- * Format a date as a relative time string (e.g., "2 hours ago", "3 days ago")
- * @param date - Date object or ISO string
- * @returns Formatted relative time string
- */
-export function formatTimeAgo(date: Date | string): string {
-  try {
-    const dateObj = typeof date === 'string' ? new Date(date) : date;
-
-    if (isNaN(dateObj.getTime())) {
-      throw new Error('Invalid date');
-    }
-
-    return formatDistanceToNow(dateObj, { addSuffix: true });
-  } catch (error) {
-    logError('formatTimeAgo', error);
-    return 'Unknown time';
-  }
-}
-
-/**
- * Format a date according to a specified format string
- * @param date - Date object or ISO string
- * @param formatStr - Format string (default: "MMM dd, yyyy")
- * @returns Formatted date string
- */
-export function formatDate(
-  date: Date | string,
-  formatStr: string = 'MMM dd, yyyy'
-): string {
-  try {
-    const dateObj = typeof date === 'string' ? new Date(date) : date;
-
-    if (isNaN(dateObj.getTime())) {
-      throw new Error('Invalid date');
-    }
-
-    return format(dateObj, formatStr);
-  } catch (error) {
-    logError('formatDate', error);
-    return 'Invalid date';
-  }
-}
-
-/**
- * Get countdown string until a target date
- * @param targetDate - Target date to countdown to
- * @returns Countdown string (e.g., "2h 30m 15s")
- */
-export function getCountdown(targetDate: Date | string): string {
-  try {
-    const target = typeof targetDate === 'string' ? new Date(targetDate) : targetDate;
-    const now = new Date();
-
-    if (isNaN(target.getTime())) {
-      throw new Error('Invalid target date');
-    }
-
-    const seconds = differenceInSeconds(target, now);
-
-    if (seconds < 0) {
-      return 'Event has passed';
-    }
-
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-
-    if (days > 0) {
-      return `${days}d ${hours}h ${minutes}m`;
-    } else if (hours > 0) {
-      return `${hours}h ${minutes}m ${secs}s`;
-    } else if (minutes > 0) {
-      return `${minutes}m ${secs}s`;
-    } else {
-      return `${secs}s`;
-    }
-  } catch (error) {
-    logError('getCountdown', error);
-    return 'Unable to calculate countdown';
-  }
-}
-
-/**
- * Check if a date is today
- * @param date - Date object or ISO string
- * @returns True if the date is today
- */
-export function isToday(date: Date | string): boolean {
-  try {
-    const dateObj = typeof date === 'string' ? new Date(date) : date;
-
-    if (isNaN(dateObj.getTime())) {
-      throw new Error('Invalid date');
-    }
-
-    return dateFnsIsToday(dateObj);
-  } catch (error) {
-    logError('isToday', error);
-    return false;
-  }
-}
-
-/**
- * Check if two dates are on the same day
- * @param date1 - First date
- * @param date2 - Second date
- * @returns True if dates are on the same day
- */
-export function isSameDay(date1: Date | string, date2: Date | string): boolean {
-  try {
-    const d1 = typeof date1 === 'string' ? new Date(date1) : date1;
-    const d2 = typeof date2 === 'string' ? new Date(date2) : date2;
-
-    if (isNaN(d1.getTime()) || isNaN(d2.getTime())) {
-      return false;
-    }
-
-    return (
-      d1.getFullYear() === d2.getFullYear() &&
-      d1.getMonth() === d2.getMonth() &&
-      d1.getDate() === d2.getDate()
-    );
-  } catch (error) {
-    logError('isSameDay', error);
-    return false;
-  }
-}
-
-// ============================================================================
-// IMAGE UTILITIES
-// ============================================================================
-
-/**
- * Compress an image file
- * Note: This is a placeholder - in production, use a library like react-native-image-resizer
- * @param imageUri - URI of the image to compress
- * @param quality - Compression quality (0-1, default: 0.8)
- * @returns Promise resolving to compressed image URI
- */
-export async function compressImage(
-  imageUri: string,
-  quality: number = 0.8
-): Promise<string> {
-  try {
-    if (!imageUri) {
-      throw new Error('Image URI is required');
-    }
-
-    if (quality < 0 || quality > 1) {
-      throw new Error('Quality must be between 0 and 1');
-    }
-
-    // Placeholder implementation
-    // In production, use react-native-image-resizer or similar library
-    return imageUri;
-  } catch (error) {
-    throw new Error(`Failed to compress image: ${getErrorMessage(error)}`);
-  }
-}
-
-/**
- * Resize an image to specified dimensions
- * Note: This is a placeholder - in production, use a library like react-native-image-resizer
- * @param imageUri - URI of the image to resize
- * @param width - Target width in pixels
- * @param height - Target height in pixels
- * @returns Promise resolving to resized image URI
- */
-export async function resizeImage(
-  imageUri: string,
-  width: number,
-  height: number
-): Promise<string> {
-  try {
-    if (!imageUri) {
-      throw new Error('Image URI is required');
-    }
-
-    if (width <= 0 || height <= 0) {
-      throw new Error('Width and height must be positive numbers');
-    }
-
-    // Placeholder implementation
-    // In production, use react-native-image-resizer or similar library
-    return imageUri;
-  } catch (error) {
-    throw new Error(`Failed to resize image: ${getErrorMessage(error)}`);
-  }
-}
-
-/**
- * Generate a thumbnail from an image
- * @param imageUri - URI of the image
- * @param size - Thumbnail size in pixels (default: 200)
- * @returns Promise resolving to thumbnail image URI
- */
-export async function generateThumbnail(
-  imageUri: string,
-  size: number = 200
-): Promise<string> {
-  try {
-    if (!imageUri) {
-      throw new Error('Image URI is required');
-    }
-
-    if (size <= 0) {
-      throw new Error('Thumbnail size must be a positive number');
-    }
-
-    return resizeImage(imageUri, size, size);
-  } catch (error) {
-    throw new Error(`Failed to generate thumbnail: ${getErrorMessage(error)}`);
-  }
-}
-
-/**
- * Generate blur hash for an image
- * Note: This is a placeholder - in production, use blurhash library
- * @param imageUri - URI of the image
- * @returns Promise resolving to blur hash string
- */
-export async function generateBlurHash(imageUri: string): Promise<string> {
-  try {
-    if (!imageUri) {
-      throw new Error('Image URI is required');
-    }
-
-    // Placeholder implementation
-    // In production, use blurhash library to generate hash
-    return 'LKO2?U%2Tw=w]~RBVZRi};RPxuwH';
-  } catch (error) {
-    throw new Error(`Failed to generate blur hash: ${getErrorMessage(error)}`);
-  }
-}
-
-// ============================================================================
-// STRING UTILITIES
-// ============================================================================
-
-/**
- * Truncate a string to a specified length with ellipsis
- * @param str - String to truncate
- * @param maxLength - Maximum length before truncation
- * @returns Truncated string with ellipsis if needed
- */
-export function truncateString(str: string, maxLength: number): string {
-  try {
-    if (typeof str !== 'string') {
-      throw new Error('Input must be a string');
-    }
-
-    if (maxLength < 0) {
-      throw new Error('Max length must be non-negative');
-    }
-
-    if (str.length <= maxLength) {
-      return str;
-    }
-
-    return str.substring(0, maxLength).trim() + '...';
-  } catch (error) {
-    logError('truncateString', error);
-    return str;
-  }
-}
-
-/**
- * Validate an email address format
- * @param email - Email address to validate
- * @returns True if email format is valid
- */
-export function validateEmail(email: string): boolean {
-  try {
-    if (typeof email !== 'string') {
-      return false;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email.trim());
-  } catch (error) {
-    logError('validateEmail', error);
-    return false;
-  }
-}
-
-/**
- * Validate a username according to app rules
- * @param username - Username to validate
- * @returns Object with isValid boolean and error message if invalid
- */
-export function validateUsername(username: string): { isValid: boolean; error?: string } {
-  try {
-    if (typeof username !== 'string') {
-      return { isValid: false, error: 'Username must be a string' };
-    }
-
-    const trimmed = username.trim();
-
-    if (trimmed.length < VALIDATION.USERNAME_MIN) {
-      return {
-        isValid: false,
-        error: `Username must be at least ${VALIDATION.USERNAME_MIN} characters`,
-      };
-    }
-
-    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
-      return {
-        isValid: false,
-        error: 'Username can only contain letters, numbers, and underscores',
-      };
-    }
-
-    return { isValid: true };
-  } catch (error) {
-    logError('validateUsername', error);
-    return { isValid: false, error: 'Failed to validate username' };
-  }
-}
-
-/**
- * Sanitize user input to prevent XSS attacks
- * @param input - Input string to sanitize
- * @returns Sanitized string
- */
-export function sanitizeInput(input: string): string {
-  try {
-    if (typeof input !== 'string') {
-      return '';
-    }
-
-    return input
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#x27;')
-      .replace(/\//g, '&#x2F;');
-  } catch (error) {
-    logError('sanitizeInput', error);
-    return '';
-  }
-}
-
-/**
- * Capitalize first letter of each word in a string
- * @param str - String to capitalize
- * @returns Capitalized string
- */
-export function capitalizeWords(str: string): string {
-  try {
-    if (typeof str !== 'string') {
-      return '';
-    }
-
-    return str
-      .split(' ')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
-  } catch (error) {
-    logError('capitalizeWords', error);
-    return str;
-  }
-}
-
-// ============================================================================
-// DATA UTILITIES
-// ============================================================================
-
-/**
- * Group an array of items by a specified key
- * @param array - Array to group
- * @param key - Key to group by (can be a function or string)
- * @returns Object with grouped items
- */
-export function groupBy<T>(
-  array: T[],
-  key: keyof T | ((item: T) => string | number)
-): Record<string, T[]> {
-  try {
-    if (!Array.isArray(array)) {
-      throw new Error('First argument must be an array');
-    }
-
-    return array.reduce((result, item) => {
-      const groupKey =
-        typeof key === 'function' ? String(key(item)) : String(item[key]);
-      if (!result[groupKey]) {
-        result[groupKey] = [];
-      }
-      result[groupKey].push(item);
-      return result;
-    }, {} as Record<string, T[]>);
-  } catch (error) {
-    logError('groupBy', error);
-    return {};
-  }
-}
-
-/**
- * Sort an array by date property
- * @param array - Array to sort
- * @param dateKey - Key containing the date value
- * @param ascending - Sort order (default: false, newest first)
- * @returns Sorted array
- */
-export function sortByDate<T>(
-  array: T[],
-  dateKey: keyof T,
-  ascending: boolean = false
-): T[] {
-  try {
-    if (!Array.isArray(array)) {
-      throw new Error('First argument must be an array');
-    }
-
-    return [...array].sort((a, b) => {
-      const dateA = new Date(a[dateKey] as string | Date).getTime();
-      const dateB = new Date(b[dateKey] as string | Date).getTime();
-
-      if (isNaN(dateA) || isNaN(dateB)) {
-        return 0;
-      }
-
-      return ascending ? dateA - dateB : dateB - dateA;
-    });
-  } catch (error) {
-    logError('sortByDate', error);
-    return array;
-  }
-}
-
-/**
- * Filter an array by status property
- * @param array - Array to filter
- * @param statusKey - Key containing the status value
- * @param status - Status value to filter by
- * @returns Filtered array
- */
-export function filterByStatus<T>(
-  array: T[],
-  statusKey: keyof T,
-  status: string
-): T[] {
-  try {
-    if (!Array.isArray(array)) {
-      throw new Error('First argument must be an array');
-    }
-
-    return array.filter((item) => item[statusKey] === status);
-  } catch (error) {
-    logError('filterByStatus', error);
-    return [];
-  }
-}
-
-/**
- * Remove duplicate items from an array based on a unique key
- * @param array - Array to deduplicate
- * @param key - Key to use for uniqueness check
- * @returns Array with duplicates removed
- */
-export function deduplicateBy<T>(
-  array: T[],
-  key: keyof T | ((item: T) => string | number)
-): T[] {
-  try {
-    if (!Array.isArray(array)) {
-      throw new Error('First argument must be an array');
-    }
-
-    const seen = new Set<string | number>();
-    return array.filter((item) => {
-      const uniqueKey =
-        typeof key === 'function' ? key(item) : item[key];
-      const keyValue = typeof uniqueKey === 'string' || typeof uniqueKey === 'number' 
-        ? uniqueKey 
-        : String(uniqueKey);
-      if (seen.has(keyValue)) {
-        return false;
-      }
-      seen.add(keyValue);
-      return true;
-    });
-  } catch (error) {
-    logError('deduplicateBy', error);
-    return array;
-  }
-}
-
-/**
- * Get unique items from an array
- * @param array - Array to get unique items from
- * @param key - Optional key to use for uniqueness
- * @returns Array with unique items
- */
-export function unique<T>(
-  array: T[],
-  key?: keyof T | ((item: T) => string | number)
-): T[] {
-  try {
-    if (!Array.isArray(array)) {
-      throw new Error('First argument must be an array');
-    }
-
-    if (key) {
-      return deduplicateBy(array, key);
-    }
-
-    return Array.from(new Set(array));
-  } catch (error) {
-    logError('unique', error);
-    return array;
-  }
-}
-
-/**
- * Split an array into chunks of specified size
- * @param array - Array to chunk
- * @param size - Size of each chunk
- * @returns Array of chunks
- */
-export function chunk<T>(array: T[], size: number): T[][] {
-  try {
-    if (!Array.isArray(array)) {
-      throw new Error('First argument must be an array');
-    }
-
-    if (size <= 0) {
-      throw new Error('Chunk size must be positive');
-    }
-
-    const chunks: T[][] = [];
-    for (let i = 0; i < array.length; i += size) {
-      chunks.push(array.slice(i, i + size));
-    }
-    return chunks;
-  } catch (error) {
-    logError('chunk', error);
-    return [];
-  }
-}
-
-// ============================================================================
-// NUMBER UTILITIES
-// ============================================================================
-
-/**
- * Format a number with thousand separators
- * @param num - Number to format
- * @param decimals - Number of decimal places (default: 0)
- * @returns Formatted number string
- */
-export function formatNumber(num: number, decimals: number = 0): string {
-  try {
-    if (typeof num !== 'number' || isNaN(num)) {
-      throw new Error('Invalid number');
-    }
-
-    return num.toLocaleString('en-US', {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    });
-  } catch (error) {
-    logError('formatNumber', error);
-    return '0';
-  }
-}
-
-/**
- * Calculate growth rate percentage between two values
- * @param oldValue - Previous value
- * @param newValue - Current value
- * @returns Growth rate as a percentage
- */
-export function calculateGrowthRate(
-  oldValue: number,
-  newValue: number
-): number {
-  try {
-    if (typeof oldValue !== 'number' || typeof newValue !== 'number') {
-      throw new Error('Both values must be numbers');
-    }
-
-    if (oldValue === 0) {
-      return newValue > 0 ? 100 : 0;
-    }
-
-    return ((newValue - oldValue) / oldValue) * 100;
-  } catch (error) {
-    logError('calculateGrowthRate', error);
-    return 0;
-  }
-}
-
-/**
- * Round a number to a specified number of decimal places
- * @param num - Number to round
- * @param decimals - Number of decimal places (default: 2)
- * @returns Rounded number
- */
-export function roundToDecimal(num: number, decimals: number = 2): number {
-  try {
-    if (typeof num !== 'number' || isNaN(num)) {
-      throw new Error('Invalid number');
-    }
-
-    if (decimals < 0) {
-      throw new Error('Decimal places must be non-negative');
-    }
-
-    const factor = Math.pow(10, decimals);
-    return Math.round(num * factor) / factor;
-  } catch (error) {
-    logError('roundToDecimal', error);
-    return num;
-  }
-}
-
-/**
- * Format a number with K/M suffixes (e.g., 1.2K, 1.5M)
- * @param num - Number to format
- * @returns Formatted string
- */
-export function formatNumberCompact(num: number): string {
-  try {
-    if (typeof num !== 'number' || isNaN(num)) {
-      return '0';
-    }
-
-    if (num >= 1000000) {
-      return `${(num / 1000000).toFixed(1)}M`;
-    }
-
-    if (num >= 1000) {
-      return `${(num / 1000).toFixed(1)}K`;
-    }
-
-    return num.toString();
-  } catch (error) {
-    logError('formatNumberCompact', error);
-    return '0';
-  }
-}
-
-/**
- * Calculate percentage of a value relative to total
- * @param value - Value to calculate percentage for
- * @param total - Total value
- * @returns Percentage (0-100)
- */
-export function percentage(value: number, total: number): number {
-  try {
-    if (typeof value !== 'number' || typeof total !== 'number') {
-      throw new Error('Both values must be numbers');
-    }
-
-    if (total === 0) {
-      return 0;
-    }
-
-    return roundToDecimal((value / total) * 100, 1);
-  } catch (error) {
-    logError('percentage', error);
-    return 0;
-  }
-}
-
-/**
- * Clamp a value between min and max
- * @param value - Value to clamp
- * @param min - Minimum value
- * @param max - Maximum value
- * @returns Clamped value
- */
-export function clamp(value: number, min: number, max: number): number {
-  try {
-    if (typeof value !== 'number' || typeof min !== 'number' || typeof max !== 'number') {
-      throw new Error('All values must be numbers');
-    }
-
-    if (min > max) {
-      throw new Error('Min must be less than or equal to max');
-    }
-
-    return Math.min(Math.max(value, min), max);
-  } catch (error) {
-    logError('clamp', error);
-    return value;
-  }
-}
-
-// ============================================================================
-// ERROR UTILITIES
-// ============================================================================
-
-/**
- * Extract error message from various error types
- * @param error - Error object, string, or unknown type
- * @returns Error message string
- */
-export function getErrorMessage(error: unknown): string {
-  try {
-    if (error instanceof Error) {
-      return error.message;
-    }
-
-    if (typeof error === 'string') {
-      return error;
-    }
-
-    if (error && typeof error === 'object' && 'message' in error) {
-      return String(error.message);
-    }
-
-    return 'An unknown error occurred';
-  } catch {
-    return 'Failed to extract error message';
-  }
-}
-
-/**
- * Log an error with context
- * @param context - Context where the error occurred
- * @param error - Error to log
- */
-export function logError(context: string, error: unknown): void {
-  try {
-    const message = getErrorMessage(error);
-    const timestamp = new Date().toISOString();
-    
-    // In production, integrate with a logging service
-    console.error(`[${timestamp}] [${context}]`, message, error);
-  } catch {
-    // Silently fail if logging itself fails
-  }
-}
-
-/**
- * Check if an error is a network-related error
- * @param error - Error to check
- * @returns True if error is network-related
- */
-export function isNetworkError(error: unknown): boolean {
-  try {
-    const message = getErrorMessage(error).toLowerCase();
-
-    return (
-      message.includes('network') ||
-      message.includes('fetch') ||
-      message.includes('timeout') ||
-      message.includes('connection') ||
-      message.includes('offline') ||
-      message.includes('econnrefused') ||
-      message.includes('enotfound')
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Check if an error is an authentication-related error
- * @param error - Error to check
- * @returns True if error is auth-related
- */
-export function isAuthError(error: unknown): boolean {
-  try {
-    const message = getErrorMessage(error).toLowerCase();
-
-    return (
-      message.includes('auth') ||
-      message.includes('unauthorized') ||
-      message.includes('forbidden') ||
-      message.includes('token') ||
-      message.includes('session') ||
-      message.includes('login') ||
-      message.includes('password')
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Capture exception for error tracking/analytics
- * @param error - Error to capture
- * @param context - Additional context about the error
- */
-export function captureException(error: unknown, context?: Record<string, any>): void {
-  try {
-    const errorMessage = getErrorMessage(error);
-    const timestamp = new Date().toISOString();
-    
-    // In production, integrate with error tracking service (Sentry, Bugsnag, etc.)
-    console.error(`[${timestamp}] Exception captured:`, errorMessage, context || {});
-    
-    // Example: Sentry.captureException(error, { extra: context });
-  } catch {
-    // Silently fail if capturing fails
-  }
-}
-
-// ============================================================================
-// VALIDATION UTILITIES
-// ============================================================================
-
-/**
- * Party form data interface
- */
-export interface PartyFormData {
+  return false;
+};
+
+export const captureException = (error: unknown, context?: Record<string, any>): void => {
+  console.error('Exception captured:', error, context);
+  // In production, send to error tracking service (e.g., Sentry)
+};
+
+// Validation utilities
+export const validatePartyForm = (data: {
   title: string;
   description?: string;
   latitude: number;
   longitude: number;
-  address?: string;
-}
-
-/**
- * Validate party form data
- * @param data - Party form data to validate
- * @returns Object with isValid boolean and error messages
- */
-export function validatePartyForm(data: PartyFormData): {
-  isValid: boolean;
-  errors: Record<string, string>;
-} {
+}): { isValid: boolean; errors: Record<string, string> } => {
   const errors: Record<string, string> = {};
-
-  try {
-    if (!data.title || typeof data.title !== 'string' || data.title.trim().length === 0) {
-      errors.title = 'Party title is required';
-    } else if (data.title.length > 100) {
-      errors.title = 'Party title must be 100 characters or less';
-    }
-
-    if (data.description && data.description.length > 500) {
-      errors.description = 'Description must be 500 characters or less';
-    }
-
-    if (
-      typeof data.latitude !== 'number' ||
-      isNaN(data.latitude) ||
-      data.latitude < -90 ||
-      data.latitude > 90
-    ) {
-      errors.latitude = 'Valid latitude is required';
-    }
-
-    if (
-      typeof data.longitude !== 'number' ||
-      isNaN(data.longitude) ||
-      data.longitude < -180 ||
-      data.longitude > 180
-    ) {
-      errors.longitude = 'Valid longitude is required';
-    }
-
-    return {
-      isValid: Object.keys(errors).length === 0,
-      errors,
-    };
-  } catch (error) {
-    logError('validatePartyForm', error);
-    return {
-      isValid: false,
-      errors: { general: 'Failed to validate party form' },
-    };
+  
+  if (!data.title || data.title.trim().length === 0) {
+    errors.title = 'Party title is required';
+  } else if (data.title.length > 100) {
+    errors.title = 'Party title must be 100 characters or less';
   }
-}
-
-/**
- * Validate photo caption
- * @param caption - Caption text to validate
- * @returns Object with isValid boolean and error message if invalid
- */
-export function validatePhotoCaption(caption: string): {
-  isValid: boolean;
-  error?: string;
-} {
-  try {
-    if (typeof caption !== 'string') {
-      return { isValid: false, error: 'Caption must be a string' };
-    }
-
-    if (caption.length > VALIDATION.CAPTION_MAX) {
-      return {
-        isValid: false,
-        error: `Caption must be ${VALIDATION.CAPTION_MAX} characters or less`,
-      };
-    }
-
-    return { isValid: true };
-  } catch (error) {
-    logError('validatePhotoCaption', error);
-    return { isValid: false, error: 'Failed to validate caption' };
+  
+  if (data.description && data.description.length > 500) {
+    errors.description = 'Description must be 500 characters or less';
   }
-}
-
-/**
- * Validate message text
- * @param message - Message text to validate
- * @returns Object with isValid boolean and error message if invalid
- */
-export function validateMessage(message: string): {
-  isValid: boolean;
-  error?: string;
-} {
-  try {
-    if (typeof message !== 'string') {
-      return { isValid: false, error: 'Message must be a string' };
-    }
-
-    const trimmed = message.trim();
-
-    if (trimmed.length === 0) {
-      return { isValid: false, error: 'Message cannot be empty' };
-    }
-
-    if (trimmed.length > VALIDATION.MESSAGE_MAX) {
-      return {
-        isValid: false,
-        error: `Message must be ${VALIDATION.MESSAGE_MAX} characters or less`,
-      };
-    }
-
-    return { isValid: true };
-  } catch (error) {
-    logError('validateMessage', error);
-    return { isValid: false, error: 'Failed to validate message' };
+  
+  if (!data.latitude || !data.longitude) {
+    errors.location = 'Location is required';
   }
-}
+  
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors,
+  };
+};
 
-// ============================================================================
-// PERFORMANCE UTILITIES
-// ============================================================================
+export const validatePhotoCaption = (caption: string): { isValid: boolean; error?: string } => {
+  if (caption.length > 200) {
+    return { isValid: false, error: 'Caption must be 200 characters or less' };
+  }
+  return { isValid: true };
+};
 
-/**
- * Debounce a function call
- * @param fn - Function to debounce
- * @param delay - Delay in milliseconds
- * @returns Debounced function
- */
-export function debounce<T extends (...args: any[]) => any>(
-  fn: T,
+export const validateMessage = (message: string): { isValid: boolean; error?: string } => {
+  if (!message || message.trim().length === 0) {
+    return { isValid: false, error: 'Message cannot be empty' };
+  }
+  if (message.length > 300) {
+    return { isValid: false, error: 'Message must be 300 characters or less' };
+  }
+  return { isValid: true };
+};
+
+// Debounce function
+export const debounce = <T extends (...args: any[]) => any>(
+  func: T,
   delay: number
-): (...args: Parameters<T>) => void {
-  let timeoutId: NodeJS.Timeout | null = null;
-
+): (...args: Parameters<T>) => void => {
+  let timeoutId: NodeJS.Timeout;
   return (...args: Parameters<T>) => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-
-    timeoutId = setTimeout(() => {
-      fn(...args);
-    }, delay);
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => func(...args), delay);
   };
-}
+};
 
-/**
- * Throttle a function call
- * @param fn - Function to throttle
- * @param interval - Interval in milliseconds
- * @returns Throttled function
- */
-export function throttle<T extends (...args: any[]) => any>(
-  fn: T,
-  interval: number
-): (...args: Parameters<T>) => void {
-  let lastCall = 0;
-
-  return (...args: Parameters<T>) => {
-    const now = Date.now();
-
-    if (now - lastCall >= interval) {
-      lastCall = now;
-      fn(...args);
-    }
-  };
-}
-
-/**
- * Memoize a function with cache
- * @param fn - Function to memoize
- * @returns Memoized function
- */
-export function memoize<T extends (...args: any[]) => any>(
-  fn: T
-): (...args: Parameters<T>) => ReturnType<T> {
-  const cache = new Map<string, ReturnType<T>>();
-
-  return (...args: Parameters<T>): ReturnType<T> => {
-    const key = JSON.stringify(args);
-
-    if (cache.has(key)) {
-      return cache.get(key)!;
-    }
-
-    const result = fn(...args);
-    cache.set(key, result);
+// Array utilities
+export const groupBy = <T>(array: T[], key: keyof T): Record<string, T[]> => {
+  return array.reduce((result, item) => {
+    const group = String(item[key]);
+    (result[group] = result[group] || []).push(item);
     return result;
-  };
-}
+  }, {} as Record<string, T[]>);
+};
 
+export const unique = <T>(array: T[], key?: keyof T): T[] => {
+  if (!key) return Array.from(new Set(array));
+  const seen = new Set();
+  return array.filter(item => {
+    const value = item[key];
+    if (seen.has(value)) return false;
+    seen.add(value);
+    return true;
+  });
+};
+
+// Mock Data for Development
+
+// Mock users for parties
+const mockUsers: User[] = [
+  {
+    id: 'user1',
+    email: 'sarah@university.edu',
+    username: 'sarahparty',
+    avatar_url: 'https://picsum.photos/200/200?random=1',
+    bio: 'Party enthusiast and event organizer',
+    created_at: new Date('2024-01-15'),
+    updated_at: new Date('2024-01-15'),
+    friend_count: 125,
+    parties_attended: 23,
+    photos_posted: 45,
+    last_location_lat: 40.7128,
+    last_location_lng: -74.0060,
+    privacy_setting: 'public',
+    is_blocked_by_list: [],
+    deleted_at: null,
+    last_seen_at: new Date(),
+  },
+  {
+    id: 'user2',
+    email: 'mike@university.edu',
+    username: 'mikedj',
+    avatar_url: 'https://picsum.photos/200/200?random=2',
+    bio: 'DJ and music lover',
+    created_at: new Date('2024-02-10'),
+    updated_at: new Date('2024-02-10'),
+    friend_count: 89,
+    parties_attended: 15,
+    photos_posted: 32,
+    last_location_lat: 40.7282,
+    last_location_lng: -73.9942,
+    privacy_setting: 'public',
+    is_blocked_by_list: [],
+    deleted_at: null,
+    last_seen_at: new Date(),
+  },
+  {
+    id: 'user3',
+    email: 'emma@university.edu',
+    username: 'emmavibe',
+    avatar_url: 'https://picsum.photos/200/200?random=3',
+    bio: 'Creating unforgettable memories',
+    created_at: new Date('2024-01-20'),
+    updated_at: new Date('2024-01-20'),
+    friend_count: 156,
+    parties_attended: 31,
+    photos_posted: 78,
+    last_location_lat: 40.7589,
+    last_location_lng: -73.9851,
+    privacy_setting: 'public',
+    is_blocked_by_list: [],
+    deleted_at: null,
+    last_seen_at: new Date(),
+  },
+  {
+    id: 'user4',
+    email: 'alex@university.edu',
+    username: 'alexfun',
+    avatar_url: 'https://picsum.photos/200/200?random=4',
+    bio: 'Life of the party',
+    created_at: new Date('2024-03-05'),
+    updated_at: new Date('2024-03-05'),
+    friend_count: 203,
+    parties_attended: 42,
+    photos_posted: 67,
+    last_location_lat: 40.7505,
+    last_location_lng: -73.9934,
+    privacy_setting: 'public',
+    is_blocked_by_list: [],
+    deleted_at: null,
+    last_seen_at: new Date(),
+  },
+  {
+    id: 'user5',
+    email: 'jordan@university.edu',
+    username: 'jordanbeats',
+    avatar_url: 'https://picsum.photos/200/200?random=5',
+    bio: 'Music producer and event host',
+    created_at: new Date('2024-02-28'),
+    updated_at: new Date('2024-02-28'),
+    friend_count: 178,
+    parties_attended: 28,
+    photos_posted: 54,
+    last_location_lat: 40.7527,
+    last_location_lng: -73.9772,
+    privacy_setting: 'public',
+    is_blocked_by_list: [],
+    deleted_at: null,
+    last_seen_at: new Date(),
+  },
+];
+
+// Generate random time for parties
+const generatePartyTime = () => {
+  const now = new Date();
+  const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  
+  // Random time between now and next week
+  const randomTime = new Date(now.getTime() + Math.random() * (nextWeek.getTime() - now.getTime()));
+  
+  return {
+    created_at: randomTime.toISOString(),
+    updated_at: randomTime.toISOString(),
+    ended_at: null,
+    last_activity_at: randomTime.toISOString(),
+  };
+};
+
+// Mock party data
+export const mockParties: Party[] = [
+  {
+    id: 'party1',
+    created_by: mockUsers[0].id,
+    title: '🎉 Epic House Party at University Heights',
+    description: 'Join us for the wildest house party of the semester! Great music, amazing people, and unforgettable memories. BYOB and bring your dancing shoes!',
+    photo_url: 'https://picsum.photos/400/300?random=10',
+    address: '123 University Heights Dr',
+    latitude: 40.7128,
+    longitude: -74.0060,
+    max_attendees: 150,
+    attendee_count: 34,
+    status: 'active',
+    is_trending: true,
+    view_count: 256,
+    engagement_score: 8.5,
+    tags: ['house party', 'dancing', 'music', 'drinks', 'college'],
+    vibe: 'banger',
+    creator: mockUsers[0],
+    attendees: mockUsers.slice(1, 4),
+    photos: [],
+    ...generatePartyTime(),
+  },
+  {
+    id: 'party2',
+    created_by: mockUsers[1].id,
+    title: '🏖️ Beach Bonfire & BBQ',
+    description: 'Sunset beach party with bonfire, BBQ, volleyball, and chill vibes. Watch the sunset while enjoying great food and company!',
+    photo_url: 'https://picsum.photos/400/300?random=11',
+    address: 'Sunset Beach Park',
+    latitude: 40.7282,
+    longitude: -73.9942,
+    max_attendees: 80,
+    attendee_count: 23,
+    status: 'active',
+    is_trending: false,
+    view_count: 134,
+    engagement_score: 7.2,
+    tags: ['beach', 'bonfire', 'BBQ', 'sunset', 'volleyball'],
+    vibe: 'chill',
+    creator: mockUsers[1],
+    attendees: mockUsers.slice(0, 3),
+    photos: [],
+    ...generatePartyTime(),
+  },
+  {
+    id: 'party3',
+    created_by: mockUsers[1].id,
+    title: '🎵 Underground DJ Set - Electronic Vibes',
+    description: 'Experience the best electronic music in the city! Underground venue with world-class DJs and mind-blowing sound system.',
+    photo_url: 'https://picsum.photos/400/300?random=12',
+    address: 'The Underground Club',
+    latitude: 40.7589,
+    longitude: -73.9851,
+    max_attendees: 200,
+    attendee_count: 67,
+    status: 'active',
+    is_trending: true,
+    view_count: 423,
+    engagement_score: 9.1,
+    tags: ['electronic', 'DJ', 'underground', 'dancing', 'nightlife'],
+    vibe: 'lit',
+    creator: mockUsers[1],
+    attendees: mockUsers.slice(2, 5),
+    photos: [],
+    ...generatePartyTime(),
+  },
+  {
+    id: 'party4',
+    created_by: mockUsers[2].id,
+    title: '🏠 Cozy Movie Night & Pizza',
+    description: 'Intimate gathering for movie lovers! We\'ll watch classic films, eat amazing pizza, and have great conversations. Perfect for a chill night.',
+    photo_url: 'https://picsum.photos/400/300?random=13',
+    address: '456 Maple Street Apt 3B',
+    latitude: 40.7505,
+    longitude: -73.9934,
+    max_attendees: 25,
+    attendee_count: 12,
+    status: 'active',
+    is_trending: false,
+    view_count: 67,
+    engagement_score: 6.8,
+    tags: ['movie night', 'pizza', 'cozy', 'friends', 'indoor'],
+    vibe: 'chill',
+    creator: mockUsers[2],
+    attendees: mockUsers.slice(0, 2),
+    photos: [],
+    ...generatePartyTime(),
+  },
+  {
+    id: 'party5',
+    created_by: mockUsers[3].id,
+    title: '🍻 Rooftop Bar Crawl Adventure',
+    description: 'Join us for an epic rooftop bar crawl across the city! Amazing views, great drinks, and new friends. Meet at Central Station.',
+    photo_url: 'https://picsum.photos/400/300?random=14',
+    address: 'Central Station (Meeting Point)',
+    latitude: 40.7527,
+    longitude: -73.9772,
+    max_attendees: 120,
+    attendee_count: 45,
+    status: 'active',
+    is_trending: true,
+    view_count: 298,
+    engagement_score: 8.3,
+    tags: ['bar crawl', 'rooftop', 'drinks', 'city views', 'adventure'],
+    vibe: 'lit',
+    creator: mockUsers[3],
+    attendees: mockUsers.slice(1, 5),
+    photos: [],
+    ...generatePartyTime(),
+  },
+  {
+    id: 'party6',
+    created_by: mockUsers[4].id,
+    title: '🎨 Art Gallery Opening & Wine Tasting',
+    description: 'Sophisticated evening at the new downtown gallery. Contemporary art, fine wine, and intellectual conversations in a beautiful setting.',
+    photo_url: 'https://picsum.photos/400/300?random=15',
+    address: 'Downtown Contemporary Gallery',
+    latitude: 40.7614,
+    longitude: -73.9776,
+    max_attendees: 60,
+    attendee_count: 18,
+    status: 'active',
+    is_trending: false,
+    view_count: 89,
+    engagement_score: 7.5,
+    tags: ['art', 'gallery', 'wine', 'sophisticated', 'culture'],
+    vibe: 'exclusive',
+    creator: mockUsers[4],
+    attendees: mockUsers.slice(0, 3),
+    photos: [],
+    ...generatePartyTime(),
+  },
+  {
+    id: 'party7',
+    created_by: mockUsers[0].id,
+    title: '🏀 Game Night & Sports Viewing',
+    description: 'Big game tonight! Join us for an exciting viewing party with snacks, drinks, and fellow sports fans. Multiple screens and great atmosphere.',
+    photo_url: 'https://picsum.photos/400/300?random=16',
+    address: 'Sports Bar & Grill',
+    latitude: 40.7549,
+    longitude: -73.9840,
+    max_attendees: 100,
+    attendee_count: 31,
+    status: 'active',
+    is_trending: false,
+    view_count: 156,
+    engagement_score: 6.9,
+    tags: ['sports', 'viewing party', 'games', 'snacks', 'casual'],
+    vibe: 'casual',
+    creator: mockUsers[0],
+    attendees: mockUsers.slice(2, 4),
+    photos: [],
+    ...generatePartyTime(),
+  },
+  {
+    id: 'party8',
+    created_by: mockUsers[2].id,
+    title: '🌺 Garden Party & Brunch',
+    description: 'Beautiful outdoor brunch in a stunning garden setting. Fresh food, mimosas, live acoustic music, and gorgeous flowers everywhere!',
+    photo_url: 'https://picsum.photos/400/300?random=17',
+    address: 'Botanical Gardens Pavilion',
+    latitude: 40.7794,
+    longitude: -73.9632,
+    max_attendees: 70,
+    attendee_count: 28,
+    status: 'active',
+    is_trending: true,
+    view_count: 187,
+    engagement_score: 8.7,
+    tags: ['garden', 'brunch', 'outdoor', 'acoustic music', 'mimosas'],
+    vibe: 'chill',
+    creator: mockUsers[2],
+    attendees: mockUsers.slice(1, 4),
+    photos: [],
+    ...generatePartyTime(),
+  },
+];
+
+// Utility to get random parties
+export const getRandomParties = (count: number = 10): Party[] => {
+  const shuffled = [...mockParties].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, Math.min(count, mockParties.length));
+};
+
+// Utility to get trending parties
+export const getTrendingParties = (): Party[] => {
+  return mockParties.filter(party => party.is_trending);
+};
+
+// Utility to get nearby parties (mock implementation)
+export const getNearbyParties = (userLat: number, userLng: number, radiusKm: number = 10): Party[] => {
+  return mockParties.filter(party => {
+    const distance = calculateDistance(userLat, userLng, party.latitude, party.longitude);
+    return distance <= radiusKm;
+  });
+};

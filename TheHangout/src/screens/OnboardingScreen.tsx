@@ -1,58 +1,83 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
   Animated,
-  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
   Image,
-  TextInput,
+  TextInput as RNTextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
-import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
+import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../constants';
-import { Button, Input } from '../components';
+import { z } from 'zod';
+
+import { Button } from '../components/Button';
+import { Input } from '../components/Input';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, ANIMATIONS } from '../constants';
 import { useAuthStore } from '../stores';
-import { validateUsername, validateEmail } from '../utils';
+import { validateUsername } from '../utils';
+import { supabaseService } from '../services/supabase';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+// Validation schema
+const profileSchema = z.object({
+  username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/),
+  bio: z.string().max(200).optional(),
+});
 
-type OnboardingStep = 1 | 2 | 3 | 4 | 5;
-
-export default function OnboardingScreen() {
+export function OnboardingScreen() {
   const navigation = useNavigation();
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>(1);
+  const [currentStep, setCurrentStep] = useState(0);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const floatAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
   const bounceAnim = useRef(new Animated.Value(1)).current;
-
-  // Profile setup state
+  
+  // Profile form state
+  const [avatar, setAvatar] = useState<string | null>(null);
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
-  const [selectedVibes, setSelectedVibes] = useState<string[]>([]);
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
-  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [interests, setInterests] = useState<string[]>([]);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const { user } = useAuthStore();
 
   useEffect(() => {
-    // Fade in animation
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
+    // Entry animations
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        ...ANIMATIONS.springConfig,
+        useNativeDriver: true,
+      }),
+    ]).start();
 
-    // Logo rotation animation (continuous)
+    // Continuous animations
+    startContinuousAnimations();
+  }, [currentStep]);
+
+  const startContinuousAnimations = () => {
+    // Logo rotation
     Animated.loop(
       Animated.timing(rotateAnim, {
         toValue: 1,
@@ -61,792 +86,1024 @@ export default function OnboardingScreen() {
       })
     ).start();
 
-    // Float animation for step 2
-    if (currentStep === 2) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(floatAnim, {
-            toValue: 1,
-            duration: 2000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatAnim, {
-            toValue: 0,
-            duration: 2000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    }
+    // Float animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, {
+          toValue: -8,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
 
-    // Pulse animation for step 3
-    if (currentStep === 3) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.1,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    }
+    // Pulse animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 1.1,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
 
-    // Bounce animation for step 4
-    if (currentStep === 4) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(bounceAnim, {
-            toValue: 1.1,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(bounceAnim, {
-            toValue: 1,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    }
-  }, [currentStep]);
+    // Bounce animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.spring(bounceAnim, {
+          toValue: 1.2,
+          ...ANIMATIONS.springConfig,
+          useNativeDriver: true,
+        }),
+        Animated.spring(bounceAnim, {
+          toValue: 1,
+          ...ANIMATIONS.springConfig,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  };
 
   const handleNext = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (currentStep < 5) {
-      setCurrentStep((prev) => (prev + 1) as OnboardingStep);
+    if (currentStep < 4) {
+      setCurrentStep(currentStep + 1);
     } else {
-      handleComplete();
+      handleCompleteOnboarding();
     }
   };
 
   const handleBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (currentStep > 1) {
-      setCurrentStep((prev) => (prev - 1) as OnboardingStep);
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
     }
   };
 
-  const handleComplete = async () => {
-    try {
-      await AsyncStorage.setItem('onboarding_completed', 'true');
+  const handleSkip = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (currentStep === 4) {
+      // Skip profile setup
+      navigation.navigate('Main' as never);
+    } else {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  const requestLocationPermission = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status === 'granted') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // Navigate to main app
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Main' as never }],
-      });
-    } catch (error) {
-      console.error('Failed to save onboarding status:', error);
-    }
-  };
-
-  const handleLocationPermission = async () => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        handleNext();
-      } else {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        // Show error toast
-      }
-    } catch (error) {
-      console.error('Location permission error:', error);
-    }
-  };
-
-  const handleCameraPermission = async () => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status === 'granted') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        handleNext();
-      } else {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      }
-    } catch (error) {
-      console.error('Camera permission error:', error);
-    }
-  };
-
-  const handleNotificationsPermission = async () => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      // Request notifications permission
-      // Note: In production, use expo-notifications
       handleNext();
-    } catch (error) {
-      console.error('Notifications permission error:', error);
+    } else {
+      Alert.alert(
+        'Location Access',
+        'Location access denied. You can enable this later in Settings.',
+        [{ text: 'OK', onPress: handleNext }]
+      );
     }
   };
 
-  const handleAvatarSelect = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setAvatarUri(result.assets[0].uri);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
-    } catch (error) {
-      console.error('Avatar selection error:', error);
+  const requestCameraPermission = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status === 'granted') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      handleNext();
+    } else {
+      Alert.alert(
+        'Camera Access',
+        'Camera access denied. You can enable this later in Settings.',
+        [{ text: 'OK', onPress: handleNext }]
+      );
     }
   };
 
-  const handleUsernameChange = async (text: string) => {
-    setUsername(text);
-    const validation = validateUsername(text);
+  const requestNotificationPermission = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status === 'granted') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      handleNext();
+    } else {
+      Alert.alert(
+        'Notifications',
+        'Notifications disabled. You can enable this later in Settings.',
+        [{ text: 'OK', onPress: handleNext }]
+      );
+    }
+  };
+
+  const pickImage = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setAvatar(result.assets[0].uri);
+    }
+  };
+
+  const checkUsernameAvailability = async (value: string) => {
+    if (!value || value.length < 3) {
+      setUsernameAvailable(null);
+      return;
+    }
     
-    if (!validation.isValid) {
-      setUsernameError(validation.error || null);
+    setIsCheckingUsername(true);
+    try {
+      const available = await supabaseService.checkUsernameAvailability(value);
+      setUsernameAvailable(available);
+    } catch (error) {
+      console.error('Error checking username:', error);
+    } finally {
+      setIsCheckingUsername(false);
+    }
+  };
+
+  const handleCompleteOnboarding = async () => {
+    // Validate form
+    const validation = profileSchema.safeParse({ username, bio });
+    if (!validation.success) {
+      const fieldErrors: Record<string, string> = {};
+      validation.error.errors.forEach((err) => {
+        fieldErrors[err.path[0]] = err.message;
+      });
+      setErrors(fieldErrors);
       return;
     }
 
-    // Check uniqueness (placeholder - in production, call API)
-    setIsCheckingUsername(true);
-    setTimeout(() => {
-      setIsCheckingUsername(false);
-      setUsernameError(null);
-    }, 500);
+    if (!usernameAvailable) {
+      setErrors({ username: 'Username is not available' });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Update user profile
+      await supabaseService.updateProfile({
+        username,
+        bio,
+        avatar_url: avatar,
+      });
+      
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      navigation.navigate('Main' as never);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to create profile. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleVibeToggle = (vibe: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setSelectedVibes((prev) =>
-      prev.includes(vibe) ? prev.filter((v) => v !== vibe) : [...prev, vibe]
-    );
-  };
-
-  const rotateInterpolate = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  const floatInterpolate = floatAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -8],
-  });
-
-  // Render Step 1: Welcome Screen
-  const renderWelcomeScreen = () => (
-    <View style={styles.stepContainer}>
-      {/* Progress */}
-      <View style={styles.progressContainer}>
-        <Text style={styles.progressText}>1 / 5</Text>
+  const renderStep0 = () => (
+    <View style={{ flex: 1, paddingHorizontal: SPACING.lg }}>
+      {/* Progress indicator */}
+      <View style={{ alignItems: 'flex-end', marginBottom: SPACING.xl }}>
+        <Text style={{ ...TYPOGRAPHY.caption1, color: COLORS.gray500 }}>
+          1 / 5
+        </Text>
       </View>
 
       {/* Hero Image */}
+      <View style={{ alignItems: 'center', marginBottom: SPACING.xl }}>
+        <Animated.View
+          style={{
+            width: 280,
+            height: 280,
+            justifyContent: 'center',
+            alignItems: 'center',
+            transform: [
+              {
+                rotate: rotateAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0deg', '360deg'],
+                }),
+              },
+            ],
+          }}
+        >
+          <View
+            style={{
+              position: 'absolute',
+              width: 280,
+              height: 280,
+              borderRadius: 140,
+              backgroundColor: 'rgba(0, 217, 255, 0.1)',
+            }}
+          />
+          <Text style={{ fontSize: 60, fontWeight: '700' as const, color: COLORS.cyan }}>
+            TH
+          </Text>
+        </Animated.View>
+      </View>
+
+      {/* Title */}
       <Animated.View
-        style={[
-          styles.heroContainer,
-          {
-            opacity: fadeAnim,
-            transform: [{ rotate: rotateInterpolate }],
-          },
-        ]}
+        style={{
+          opacity: fadeAnim,
+          transform: [{ translateY: slideAnim }],
+        }}
       >
-        <View style={styles.logoCircle}>
-          <Text style={styles.logoText}>🎉</Text>
-        </View>
+        <Text
+          style={{
+            ...TYPOGRAPHY.display2,
+            color: COLORS.cyan,
+            textAlign: 'center',
+            marginBottom: SPACING.sm,
+          }}
+        >
+          The Hangout
+        </Text>
+        <Text
+          style={{
+            ...TYPOGRAPHY.body,
+            color: COLORS.gray500,
+            textAlign: 'center',
+            marginBottom: SPACING.xxl,
+          }}
+        >
+          Find parties. Make memories.
+        </Text>
+
+        {/* Features */}
+        {['🗺️ Discover parties in real-time', '📸 Share moments with friends', '🎉 Connect with your community'].map(
+          (feature, index) => (
+            <Animated.View
+              key={index}
+              style={{
+                opacity: fadeAnim,
+                transform: [
+                  {
+                    translateY: slideAnim.interpolate({
+                      inputRange: [0, 50],
+                      outputRange: [0, 50 + index * 10],
+                    }),
+                  },
+                ],
+              }}
+            >
+              <Text
+                style={{
+                  ...TYPOGRAPHY.bodySmall,
+                  color: COLORS.gray400,
+                  textAlign: 'center',
+                  marginBottom: SPACING.md,
+                }}
+              >
+                {feature}
+              </Text>
+            </Animated.View>
+          )
+        )}
       </Animated.View>
 
-      {/* Headline */}
-      <Animated.View style={{ opacity: fadeAnim }}>
-        <Text style={styles.headline}>The Hangout</Text>
-        <Text style={styles.subheadline}>Find parties. Make memories.</Text>
-      </Animated.View>
-
-      {/* Features List */}
-      <Animated.View style={[styles.featuresList, { opacity: fadeAnim }]}>
-        <Text style={styles.featureItem}>🗺️ Discover parties in real-time</Text>
-        <Text style={styles.featureItem}>📸 Share moments with friends</Text>
-        <Text style={styles.featureItem}>🎉 Connect with your community</Text>
-      </Animated.View>
+      <View style={{ flex: 1 }} />
 
       {/* Continue Button */}
-      <View style={styles.buttonContainer}>
+      <LinearGradient
+        colors={[COLORS.cyan, COLORS.pink]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={{
+          borderRadius: RADIUS.md,
+          marginBottom: SPACING.lg,
+        }}
+      >
         <TouchableOpacity
           onPress={handleNext}
           activeOpacity={0.8}
-          style={styles.continueButton}
+          style={{
+            height: 56,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
         >
-          <LinearGradient
-            colors={[COLORS.cyan, COLORS.pink]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.gradientButton}
-          >
-            <Text style={styles.continueButtonText}>Get Started</Text>
-          </LinearGradient>
+          <Text style={{ ...TYPOGRAPHY.bodyBold, color: COLORS.white }}>
+            Get Started
+          </Text>
         </TouchableOpacity>
-      </View>
+      </LinearGradient>
     </View>
   );
 
-  // Render Step 2: Location Permission
-  const renderLocationScreen = () => (
-    <View style={styles.stepContainer}>
-      {/* Back Button */}
-      <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-        <Ionicons name="chevron-back" size={24} color={COLORS.white} />
-      </TouchableOpacity>
-
-      {/* Progress */}
-      <View style={styles.progressContainer}>
-        <Text style={styles.progressText}>2 / 5</Text>
+  const renderStep1 = () => (
+    <View style={{ flex: 1, paddingHorizontal: SPACING.lg }}>
+      {/* Header */}
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: SPACING.xl,
+        }}
+      >
+        <TouchableOpacity onPress={handleBack}>
+          <Ionicons name="chevron-back" size={24} color={COLORS.white} />
+        </TouchableOpacity>
+        <Text style={{ ...TYPOGRAPHY.caption1, color: COLORS.gray500 }}>
+          2 / 5
+        </Text>
       </View>
 
       {/* Illustration */}
-      <Animated.View
-        style={[
-          styles.illustrationContainer,
-          {
-            transform: [{ translateY: floatInterpolate }],
-          },
-        ]}
-      >
-        <View style={styles.iconCircle}>
-          <Ionicons name="location" size={60} color={COLORS.cyan} />
-        </View>
-      </Animated.View>
+      <View style={{ alignItems: 'center', marginBottom: SPACING.xxl }}>
+        <Animated.View
+          style={{
+            width: 200,
+            height: 200,
+            justifyContent: 'center',
+            alignItems: 'center',
+            transform: [{ translateY: floatAnim }],
+          }}
+        >
+          <View
+            style={{
+              position: 'absolute',
+              width: 200,
+              height: 200,
+              borderRadius: 100,
+              backgroundColor: 'rgba(0, 217, 255, 0.1)',
+            }}
+          />
+          <Ionicons name="location" size={120} color={COLORS.cyan} />
+        </Animated.View>
+      </View>
 
-      {/* Title */}
-      <Text style={styles.stepTitle}>Find Parties Near You</Text>
-      <Text style={styles.stepDescription}>
+      {/* Content */}
+      <Text
+        style={{
+          ...TYPOGRAPHY.title2,
+          color: COLORS.white,
+          textAlign: 'center',
+          marginBottom: SPACING.sm,
+        }}
+      >
+        Find Parties Near You
+      </Text>
+      <Text
+        style={{
+          ...TYPOGRAPHY.body,
+          color: COLORS.gray500,
+          textAlign: 'center',
+          lineHeight: 24,
+          marginBottom: SPACING.xxxl,
+        }}
+      >
         We use your location to show you parties happening around you. Your location is only shared with people you've accepted as friends.
       </Text>
 
       {/* Info Box */}
-      <View style={styles.infoBox}>
-        <Ionicons name="information-circle" size={16} color={COLORS.cyan} />
-        <Text style={styles.infoText}>
+      <View
+        style={{
+          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+          borderWidth: 1,
+          borderColor: 'rgba(255, 255, 255, 0.2)',
+          borderRadius: RADIUS.md,
+          padding: SPACING.lg,
+          flexDirection: 'row',
+          marginBottom: SPACING.xxl,
+        }}
+      >
+        <Ionicons
+          name="information-circle"
+          size={16}
+          color={COLORS.cyan}
+          style={{ marginRight: SPACING.sm }}
+        />
+        <Text
+          style={{
+            ...TYPOGRAPHY.caption1,
+            color: COLORS.gray400,
+            flex: 1,
+          }}
+        >
           We'll never sell your location. You can disable this anytime in Settings.
         </Text>
       </View>
 
+      <View style={{ flex: 1 }} />
+
       {/* Buttons */}
-      <View style={styles.buttonContainer}>
-        <Button
-          title="Allow Location Access"
-          variant="primary"
-          size="large"
-          onPress={handleLocationPermission}
-          style={styles.permissionButton}
-        />
-        <Button
-          title="Maybe Later"
-          variant="secondary"
-          size="large"
-          onPress={handleNext}
-          style={styles.skipButton}
-        />
-      </View>
+      <LinearGradient
+        colors={[COLORS.cyan, COLORS.cyanDark]}
+        style={{
+          borderRadius: RADIUS.md,
+          marginBottom: SPACING.md,
+        }}
+      >
+        <TouchableOpacity
+          onPress={requestLocationPermission}
+          activeOpacity={0.8}
+          style={{
+            height: 56,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ ...TYPOGRAPHY.bodyBold, color: COLORS.white }}>
+            Allow Location Access
+          </Text>
+        </TouchableOpacity>
+      </LinearGradient>
+
+      <TouchableOpacity
+        onPress={handleNext}
+        style={{
+          height: 56,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+          borderWidth: 1,
+          borderColor: COLORS.cyan,
+          borderRadius: RADIUS.md,
+          marginBottom: SPACING.lg,
+        }}
+      >
+        <Text style={{ ...TYPOGRAPHY.bodyBold, color: COLORS.white }}>
+          Maybe Later
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 
-  // Render Step 3: Camera Permission
-  const renderCameraScreen = () => (
-    <View style={styles.stepContainer}>
-      <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-        <Ionicons name="chevron-back" size={24} color={COLORS.white} />
-      </TouchableOpacity>
-
-      <View style={styles.progressContainer}>
-        <Text style={styles.progressText}>3 / 5</Text>
+  const renderStep2 = () => (
+    <View style={{ flex: 1, paddingHorizontal: SPACING.lg }}>
+      {/* Header */}
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: SPACING.xl,
+        }}
+      >
+        <TouchableOpacity onPress={handleBack}>
+          <Ionicons name="chevron-back" size={24} color={COLORS.white} />
+        </TouchableOpacity>
+        <Text style={{ ...TYPOGRAPHY.caption1, color: COLORS.gray500 }}>
+          3 / 5
+        </Text>
       </View>
 
-      <Animated.View
-        style={[
-          styles.illustrationContainer,
-          {
-            transform: [{ scale: pulseAnim }],
-          },
-        ]}
-      >
-        <View style={[styles.iconCircle, { borderColor: COLORS.pink }]}>
-          <Ionicons name="camera" size={60} color={COLORS.pink} />
-        </View>
-      </Animated.View>
+      {/* Illustration */}
+      <View style={{ alignItems: 'center', marginBottom: SPACING.xxl }}>
+        <Animated.View
+          style={{
+            width: 200,
+            height: 200,
+            justifyContent: 'center',
+            alignItems: 'center',
+            transform: [{ scale: scaleAnim }],
+          }}
+        >
+          <View
+            style={{
+              position: 'absolute',
+              width: 200,
+              height: 200,
+              borderRadius: 100,
+              backgroundColor: 'rgba(255, 0, 110, 0.1)',
+            }}
+          />
+          <Ionicons name="camera" size={120} color={COLORS.pink} />
+        </Animated.View>
+      </View>
 
-      <Text style={styles.stepTitle}>Share Your Moments</Text>
-      <Text style={styles.stepDescription}>
+      {/* Content */}
+      <Text
+        style={{
+          ...TYPOGRAPHY.title2,
+          color: COLORS.white,
+          textAlign: 'center',
+          marginBottom: SPACING.sm,
+        }}
+      >
+        Share Your Moments
+      </Text>
+      <Text
+        style={{
+          ...TYPOGRAPHY.body,
+          color: COLORS.gray500,
+          textAlign: 'center',
+          lineHeight: 24,
+          marginBottom: SPACING.xxxl,
+        }}
+      >
         Upload photos to parties you attend. Show everyone the vibes!
       </Text>
 
-      <View style={styles.infoBox}>
-        <Ionicons name="information-circle" size={16} color={COLORS.pink} />
-        <Text style={styles.infoText}>
+      {/* Info Box */}
+      <View
+        style={{
+          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+          borderWidth: 1,
+          borderColor: 'rgba(255, 255, 255, 0.2)',
+          borderRadius: RADIUS.md,
+          padding: SPACING.lg,
+          flexDirection: 'row',
+          marginBottom: SPACING.xxl,
+        }}
+      >
+        <Ionicons
+          name="information-circle"
+          size={16}
+          color={COLORS.pink}
+          style={{ marginRight: SPACING.sm }}
+        />
+        <Text
+          style={{
+            ...TYPOGRAPHY.caption1,
+            color: COLORS.gray400,
+            flex: 1,
+          }}
+        >
           Only photos you select will be uploaded. We never access your photos without permission.
         </Text>
       </View>
 
-      <View style={styles.buttonContainer}>
-        <Button
-          title="Allow Camera Access"
-          variant="primary"
-          size="large"
-          onPress={handleCameraPermission}
-          style={styles.permissionButton}
-        />
-        <Button
-          title="Skip for Now"
-          variant="secondary"
-          size="large"
-          onPress={handleNext}
-          style={styles.skipButton}
-        />
-      </View>
+      <View style={{ flex: 1 }} />
+
+      {/* Buttons */}
+      <LinearGradient
+        colors={[COLORS.pink, COLORS.pinkDark]}
+        style={{
+          borderRadius: RADIUS.md,
+          marginBottom: SPACING.md,
+        }}
+      >
+        <TouchableOpacity
+          onPress={requestCameraPermission}
+          activeOpacity={0.8}
+          style={{
+            height: 56,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ ...TYPOGRAPHY.bodyBold, color: COLORS.white }}>
+            Allow Camera Access
+          </Text>
+        </TouchableOpacity>
+      </LinearGradient>
+
+      <TouchableOpacity
+        onPress={handleNext}
+        style={{
+          height: 56,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+          borderWidth: 1,
+          borderColor: COLORS.pink,
+          borderRadius: RADIUS.md,
+          marginBottom: SPACING.lg,
+        }}
+      >
+        <Text style={{ ...TYPOGRAPHY.bodyBold, color: COLORS.white }}>
+          Skip for Now
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 
-  // Render Step 4: Notifications Permission
-  const renderNotificationsScreen = () => (
-    <View style={styles.stepContainer}>
-      <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-        <Ionicons name="chevron-back" size={24} color={COLORS.white} />
-      </TouchableOpacity>
-
-      <View style={styles.progressContainer}>
-        <Text style={styles.progressText}>4 / 5</Text>
+  const renderStep3 = () => (
+    <View style={{ flex: 1, paddingHorizontal: SPACING.lg }}>
+      {/* Header */}
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: SPACING.xl,
+        }}
+      >
+        <TouchableOpacity onPress={handleBack}>
+          <Ionicons name="chevron-back" size={24} color={COLORS.white} />
+        </TouchableOpacity>
+        <Text style={{ ...TYPOGRAPHY.caption1, color: COLORS.gray500 }}>
+          4 / 5
+        </Text>
       </View>
 
-      <Animated.View
-        style={[
-          styles.illustrationContainer,
-          {
+      {/* Illustration */}
+      <View style={{ alignItems: 'center', marginBottom: SPACING.xxl }}>
+        <Animated.View
+          style={{
+            width: 200,
+            height: 200,
+            justifyContent: 'center',
+            alignItems: 'center',
             transform: [{ scale: bounceAnim }],
-          },
-        ]}
-      >
-        <View style={[styles.iconCircle, { borderColor: COLORS.warning }]}>
-          <Ionicons name="notifications" size={60} color={COLORS.warning} />
-        </View>
-      </Animated.View>
+          }}
+        >
+          <View
+            style={{
+              position: 'absolute',
+              width: 200,
+              height: 200,
+              borderRadius: 100,
+              backgroundColor: 'rgba(255, 149, 0, 0.1)',
+            }}
+          />
+          <Ionicons name="notifications" size={120} color={COLORS.warning} />
+        </Animated.View>
+      </View>
 
-      <Text style={styles.stepTitle}>Get Real-Time Updates</Text>
-      <Text style={styles.stepDescription}>
+      {/* Content */}
+      <Text
+        style={{
+          ...TYPOGRAPHY.title2,
+          color: COLORS.white,
+          textAlign: 'center',
+          marginBottom: SPACING.sm,
+        }}
+      >
+        Get Real-Time Updates
+      </Text>
+      <Text
+        style={{
+          ...TYPOGRAPHY.body,
+          color: COLORS.gray500,
+          textAlign: 'center',
+          lineHeight: 24,
+          marginBottom: SPACING.xxxl,
+        }}
+      >
         Get notified when friends join parties, when new comments come in, and more.
       </Text>
 
-      <View style={styles.infoBox}>
-        <Ionicons name="information-circle" size={16} color={COLORS.warning} />
-        <Text style={styles.infoText}>
+      {/* Info Box */}
+      <View
+        style={{
+          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+          borderWidth: 1,
+          borderColor: 'rgba(255, 255, 255, 0.2)',
+          borderRadius: RADIUS.md,
+          padding: SPACING.lg,
+          flexDirection: 'row',
+          marginBottom: SPACING.xxl,
+        }}
+      >
+        <Ionicons
+          name="information-circle"
+          size={16}
+          color={COLORS.warning}
+          style={{ marginRight: SPACING.sm }}
+        />
+        <Text
+          style={{
+            ...TYPOGRAPHY.caption1,
+            color: COLORS.gray400,
+            flex: 1,
+          }}
+        >
           You can control notifications anytime in your Settings.
         </Text>
       </View>
 
-      <View style={styles.buttonContainer}>
-        <Button
-          title="Enable Notifications"
-          variant="primary"
-          size="large"
-          onPress={handleNotificationsPermission}
-          style={styles.permissionButton}
-        />
-        <Button
-          title="Not Right Now"
-          variant="secondary"
-          size="large"
-          onPress={handleNext}
-          style={styles.skipButton}
-        />
-      </View>
+      <View style={{ flex: 1 }} />
+
+      {/* Buttons */}
+      <TouchableOpacity
+        onPress={requestNotificationPermission}
+        style={{
+          height: 56,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: COLORS.warning,
+          borderRadius: RADIUS.md,
+          marginBottom: SPACING.md,
+        }}
+      >
+        <Text style={{ ...TYPOGRAPHY.bodyBold, color: COLORS.white }}>
+          Enable Notifications
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={handleNext}
+        style={{
+          height: 56,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+          borderWidth: 1,
+          borderColor: COLORS.warning,
+          borderRadius: RADIUS.md,
+          marginBottom: SPACING.lg,
+        }}
+      >
+        <Text style={{ ...TYPOGRAPHY.bodyBold, color: COLORS.white }}>
+          Not Right Now
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 
-  // Render Step 5: Profile Setup
-  const renderProfileSetupScreen = () => (
-    <ScrollView
-      style={styles.stepContainer}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
+  const renderStep4 = () => (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
     >
-      {/* Skip Button */}
-      <TouchableOpacity
-        onPress={handleComplete}
-        style={styles.skipButtonTop}
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1, paddingHorizontal: SPACING.lg }}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.skipText}>Skip</Text>
-      </TouchableOpacity>
+        {/* Header */}
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: SPACING.xl,
+          }}
+        >
+          <TouchableOpacity onPress={handleBack}>
+            <Ionicons name="chevron-back" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleSkip}>
+            <Text style={{ ...TYPOGRAPHY.caption1, color: COLORS.cyan }}>
+              Skip
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-      <View style={styles.progressContainer}>
-        <Text style={styles.progressText}>5 / 5</Text>
-      </View>
+        {/* Title */}
+        <Text
+          style={{
+            ...TYPOGRAPHY.title1,
+            color: COLORS.white,
+            marginTop: SPACING.xxl,
+            marginBottom: SPACING.sm,
+          }}
+        >
+          Create Your Profile
+        </Text>
+        <Text
+          style={{
+            ...TYPOGRAPHY.body,
+            color: COLORS.gray500,
+            marginBottom: SPACING.xxl,
+          }}
+        >
+          Tell us a bit about yourself
+        </Text>
 
-      <Text style={styles.profileTitle}>Create Your Profile</Text>
-      <Text style={styles.profileSubtitle}>Tell us a bit about yourself</Text>
-
-      {/* Avatar */}
-      <TouchableOpacity
-        onPress={handleAvatarSelect}
-        style={styles.avatarContainer}
-      >
-        {avatarUri ? (
-          <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
+        {/* Avatar */}
+        <TouchableOpacity
+          onPress={pickImage}
+          style={{
+            width: 96,
+            height: 96,
+            borderRadius: 48,
+            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+            borderWidth: 2,
+            borderColor: COLORS.cyan,
+            justifyContent: 'center',
+            alignItems: 'center',
+            alignSelf: 'center',
+            marginBottom: SPACING.xxl,
+          }}
+        >
+          {avatar ? (
+            <Image
+              source={{ uri: avatar }}
+              style={{
+                width: 92,
+                height: 92,
+                borderRadius: 46,
+              }}
+            />
+          ) : (
             <Ionicons name="camera" size={48} color={COLORS.cyan} />
-          </View>
-        )}
-      </TouchableOpacity>
+          )}
+        </TouchableOpacity>
 
-      {/* Username */}
-      <View style={styles.formField}>
-        <Text style={styles.fieldLabel}>Username</Text>
-        <Input
-          placeholder="Enter username"
-          value={username}
-          onChangeText={handleUsernameChange}
-          maxLength={20}
-          error={usernameError || undefined}
-          containerStyle={styles.inputContainer}
-        />
-        <View style={styles.charCounter}>
-          <Text style={styles.counterText}>
+        {/* Username */}
+        <View style={{ marginBottom: SPACING.xl }}>
+          <Text
+            style={{
+              ...TYPOGRAPHY.caption1,
+              fontWeight: '600' as const,
+              color: COLORS.white,
+              marginBottom: SPACING.sm,
+            }}
+          >
+            Username
+          </Text>
+          <View>
+            <Input
+              value={username}
+              onChangeText={(text) => {
+                setUsername(text);
+                checkUsernameAvailability(text);
+              }}
+              placeholder="Enter username"
+              maxLength={20}
+              style={{
+                paddingRight: 40,
+              }}
+            />
+            <View
+              style={{
+                position: 'absolute',
+                right: 12,
+                top: '50%',
+                transform: [{ translateY: -8 }],
+              }}
+            >
+              {isCheckingUsername ? (
+                <ActivityIndicator size="small" color={COLORS.cyan} />
+              ) : usernameAvailable === true ? (
+                <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+              ) : usernameAvailable === false ? (
+                <Ionicons name="close-circle" size={16} color={COLORS.error} />
+              ) : null}
+            </View>
+          </View>
+          <Text
+            style={{
+              ...TYPOGRAPHY.caption2,
+              color: COLORS.gray600,
+              textAlign: 'right',
+              marginTop: SPACING.xs,
+            }}
+          >
             {username.length} / 20
           </Text>
-          {isCheckingUsername && (
-            <Text style={styles.checkingText}>Checking...</Text>
-          )}
-          {!usernameError && username.length >= 3 && !isCheckingUsername && (
-            <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
-          )}
-        </View>
-      </View>
-
-      {/* Bio */}
-      <View style={styles.formField}>
-        <Text style={styles.fieldLabel}>Bio (optional)</Text>
-        <TextInput
-          style={styles.bioInput}
-          placeholder="Tell us what you're into..."
-          placeholderTextColor={COLORS.gray500}
-          value={bio}
-          onChangeText={setBio}
-          maxLength={200}
-          multiline
-          numberOfLines={4}
-        />
-        <Text style={styles.charCounter}>{bio.length} / 200</Text>
-      </View>
-
-      {/* Interests */}
-      <View style={styles.formField}>
-        <Text style={styles.fieldLabel}>What parties are you into?</Text>
-        <View style={styles.vibeContainer}>
-          {['Chill', 'Lit', 'Exclusive', 'Casual', 'Banger'].map((vibe) => (
-            <TouchableOpacity
-              key={vibe}
-              onPress={() => handleVibeToggle(vibe.toLowerCase())}
-              style={[
-                styles.vibeButton,
-                selectedVibes.includes(vibe.toLowerCase()) && styles.vibeButtonSelected,
-              ]}
+          {errors.username && (
+            <Text
+              style={{
+                ...TYPOGRAPHY.caption1,
+                color: COLORS.error,
+                marginTop: SPACING.xs,
+              }}
             >
-              <Text
-                style={[
-                  styles.vibeButtonText,
-                  selectedVibes.includes(vibe.toLowerCase()) && styles.vibeButtonTextSelected,
-                ]}
-              >
-                {vibe}
-              </Text>
-            </TouchableOpacity>
-          ))}
+              {errors.username}
+            </Text>
+          )}
         </View>
-      </View>
 
-      {/* Complete Button */}
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity
-          onPress={handleComplete}
-          activeOpacity={0.8}
-          style={styles.continueButton}
-          disabled={username.length < 3}
-        >
-          <LinearGradient
-            colors={username.length >= 3 ? [COLORS.cyan, COLORS.pink] : [COLORS.gray700, COLORS.gray700]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.gradientButton}
+        {/* Bio */}
+        <View style={{ marginBottom: SPACING.xl }}>
+          <Text
+            style={{
+              ...TYPOGRAPHY.caption1,
+              fontWeight: '600' as const,
+              color: COLORS.white,
+              marginBottom: SPACING.sm,
+            }}
           >
-            <Text style={styles.continueButtonText}>Complete Profile</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+            Bio (optional)
+          </Text>
+          <RNTextInput
+            value={bio}
+            onChangeText={setBio}
+            placeholder="Tell us what you're into..."
+            placeholderTextColor={COLORS.gray600}
+            multiline
+            maxLength={200}
+            style={{
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              borderRadius: RADIUS.md,
+              padding: SPACING.md,
+              color: COLORS.white,
+              ...TYPOGRAPHY.body,
+              minHeight: 80,
+              textAlignVertical: 'top',
+            }}
+          />
+          <Text
+            style={{
+              ...TYPOGRAPHY.caption2,
+              color: COLORS.gray600,
+              textAlign: 'right',
+              marginTop: SPACING.xs,
+            }}
+          >
+            {bio.length} / 200
+          </Text>
+        </View>
+
+        {/* Interests */}
+        <View style={{ marginBottom: SPACING.xxl }}>
+          <Text
+            style={{
+              ...TYPOGRAPHY.caption1,
+              fontWeight: '600' as const,
+              color: COLORS.white,
+              marginBottom: SPACING.sm,
+            }}
+          >
+            What parties are you into?
+          </Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: SPACING.sm,
+            }}
+          >
+            {['Chill', 'Lit', 'Exclusive', 'Casual', 'Banger'].map((interest) => (
+              <TouchableOpacity
+                key={interest}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  if (interests.includes(interest)) {
+                    setInterests(interests.filter((i) => i !== interest));
+                  } else {
+                    setInterests([...interests, interest]);
+                  }
+                }}
+                style={{
+                  paddingHorizontal: SPACING.lg,
+                  paddingVertical: SPACING.sm,
+                  borderRadius: RADIUS.full,
+                  backgroundColor: interests.includes(interest)
+                    ? COLORS.cyan
+                    : 'rgba(255, 255, 255, 0.08)',
+                  borderWidth: 1,
+                  borderColor: interests.includes(interest)
+                    ? COLORS.cyan
+                    : 'rgba(255, 255, 255, 0.2)',
+                }}
+              >
+                <Text
+                  style={{
+                    ...TYPOGRAPHY.bodySmall,
+                    fontWeight: '600' as const,
+                    color: interests.includes(interest)
+                      ? COLORS.white
+                      : COLORS.gray400,
+                  }}
+                >
+                  {interest}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <View style={{ flex: 1 }} />
+
+        {/* Complete Button */}
+        <LinearGradient
+          colors={[COLORS.cyan, COLORS.pink]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{
+            borderRadius: RADIUS.md,
+            marginBottom: SPACING.lg,
+            opacity: !username || !usernameAvailable ? 0.5 : 1,
+          }}
+        >
+          <TouchableOpacity
+            onPress={handleCompleteOnboarding}
+            disabled={!username || !usernameAvailable || isLoading}
+            activeOpacity={0.8}
+            style={{
+              height: 56,
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            {isLoading ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={{ ...TYPOGRAPHY.bodyBold, color: COLORS.white }}>
+                Complete Profile
+              </Text>
+            )}
+          </TouchableOpacity>
+        </LinearGradient>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-        {currentStep === 1 && renderWelcomeScreen()}
-        {currentStep === 2 && renderLocationScreen()}
-        {currentStep === 3 && renderCameraScreen()}
-        {currentStep === 4 && renderNotificationsScreen()}
-        {currentStep === 5 && renderProfileSetupScreen()}
-      </Animated.View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.dark }}>
+      {currentStep === 0 && renderStep0()}
+      {currentStep === 1 && renderStep1()}
+      {currentStep === 2 && renderStep2()}
+      {currentStep === 3 && renderStep3()}
+      {currentStep === 4 && renderStep4()}
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.dark,
-  },
-  content: {
-    flex: 1,
-  },
-  stepContainer: {
-    flex: 1,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-  },
-  scrollContent: {
-    paddingBottom: SPACING.xxxl,
-  },
-  progressContainer: {
-    alignItems: 'flex-end',
-    marginBottom: SPACING.lg,
-  },
-  progressText: {
-    ...TYPOGRAPHY.caption1,
-    color: COLORS.gray500,
-  },
-  backButton: {
-    position: 'absolute',
-    top: SPACING.lg,
-    left: SPACING.lg,
-    zIndex: 10,
-    padding: SPACING.xs,
-  },
-  heroContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: SCREEN_HEIGHT * 0.3,
-    marginBottom: SPACING.lg,
-  },
-  logoCircle: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: 'rgba(0, 217, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(0, 217, 255, 0.3)',
-  },
-  logoText: {
-    fontSize: 120,
-  },
-  headline: {
-    ...TYPOGRAPHY.display2,
-    color: COLORS.cyan,
-    textAlign: 'center',
-    marginBottom: SPACING.sm,
-  },
-  subheadline: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.gray500,
-    textAlign: 'center',
-    marginBottom: SPACING.xxl,
-  },
-  featuresList: {
-    alignItems: 'center',
-    marginBottom: SPACING.xxxl,
-  },
-  featureItem: {
-    ...TYPOGRAPHY.bodySmall,
-    color: COLORS.gray400,
-    textAlign: 'center',
-    marginBottom: SPACING.md,
-  },
-  buttonContainer: {
-    paddingBottom: SPACING.lg,
-  },
-  continueButton: {
-    borderRadius: RADIUS.md,
-    overflow: 'hidden',
-  },
-  gradientButton: {
-    paddingVertical: SPACING.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 56,
-  },
-  continueButtonText: {
-    ...TYPOGRAPHY.bodyBold,
-    color: COLORS.white,
-  },
-  illustrationContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: SCREEN_HEIGHT * 0.3,
-    marginBottom: SPACING.xl,
-  },
-  iconCircle: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: 'rgba(0, 217, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.cyan,
-  },
-  stepTitle: {
-    ...TYPOGRAPHY.title2,
-    color: COLORS.white,
-    textAlign: 'center',
-    marginBottom: SPACING.sm,
-  },
-  stepDescription: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.gray500,
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: SPACING.xxxl,
-    paddingHorizontal: SPACING.lg,
-  },
-  infoBox: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    padding: SPACING.lg,
-    marginBottom: SPACING.xxl,
-    alignItems: 'flex-start',
-  },
-  infoText: {
-    ...TYPOGRAPHY.caption1,
-    color: COLORS.gray400,
-    flex: 1,
-    marginLeft: SPACING.sm,
-  },
-  permissionButton: {
-    marginBottom: SPACING.md,
-  },
-  skipButton: {
-    marginTop: SPACING.sm,
-  },
-  skipButtonTop: {
-    alignSelf: 'flex-end',
-    padding: SPACING.sm,
-  },
-  skipText: {
-    ...TYPOGRAPHY.caption1,
-    color: COLORS.cyan,
-  },
-  profileTitle: {
-    ...TYPOGRAPHY.title1,
-    color: COLORS.white,
-    textAlign: 'center',
-    marginTop: SPACING.xxl,
-    marginBottom: SPACING.sm,
-  },
-  profileSubtitle: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.gray500,
-    textAlign: 'center',
-    marginBottom: SPACING.xxl,
-  },
-  avatarContainer: {
-    alignSelf: 'center',
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    marginBottom: SPACING.xl,
-    borderWidth: 2,
-    borderColor: COLORS.cyan,
-    overflow: 'hidden',
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarPlaceholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  formField: {
-    marginBottom: SPACING.xl,
-  },
-  fieldLabel: {
-    ...TYPOGRAPHY.caption1,
-    fontWeight: '600',
-    color: COLORS.white,
-    marginBottom: SPACING.xs,
-  },
-  inputContainer: {
-    marginBottom: SPACING.xs,
-  },
-  charCounter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: SPACING.xs,
-  },
-  counterText: {
-    ...TYPOGRAPHY.caption2,
-    color: COLORS.gray600,
-  },
-  checkingText: {
-    ...TYPOGRAPHY.caption2,
-    color: COLORS.cyan,
-  },
-  bioInput: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    padding: SPACING.md,
-    ...TYPOGRAPHY.body,
-    color: COLORS.white,
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
-  vibeContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
-  },
-  vibeButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.gray600,
-  },
-  vibeButtonSelected: {
-    backgroundColor: COLORS.cyan,
-    borderColor: COLORS.cyan,
-  },
-  vibeButtonText: {
-    ...TYPOGRAPHY.bodySmall,
-    color: COLORS.dark,
-    fontWeight: '600',
-  },
-  vibeButtonTextSelected: {
-    color: COLORS.dark,
-  },
-});

@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: COLORS.white,
-    fontWeight: '500',
+    fontWeight: '500' as const,
   },
 });
 

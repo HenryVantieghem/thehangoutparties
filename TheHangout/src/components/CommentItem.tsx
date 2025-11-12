@@ -44,7 +44,7 @@ export const CommentItem: React.FC<CommentItemProps> = ({
   return (
     <View
       testID={testID}
-      style={[styles.container, style]}
+      style={style ? [styles.container, style] : styles.container}
     >
       <Avatar
         uri={userAvatar}
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
   },
   username: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     color: COLORS.white,
     marginRight: SPACING.xs,
   },
@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
   deleteText: {
     fontSize: 14,
     color: COLORS.error,
-    fontWeight: '600',
+    fontWeight: '600' as const,
   },
 });
 

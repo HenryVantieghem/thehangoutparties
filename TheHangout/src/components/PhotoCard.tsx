@@ -53,7 +53,7 @@ export const PhotoCard: React.FC<PhotoCardProps> = ({
   return (
     <Card
       testID={testID}
-      style={[styles.card, style]}
+      style={style ? [styles.card, style] : styles.card}
       padding="none"
     >
       {/* Header */}
@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
   username: {
     marginLeft: SPACING.sm,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     color: COLORS.white,
   },
   photo: {
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     color: COLORS.white,
   },
   caption: {
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.sm,
   },
   captionUsername: {
-    fontWeight: '600',
+    fontWeight: '600' as const,
     color: COLORS.white,
   },
   captionText: {

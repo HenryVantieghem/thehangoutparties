@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { Button } from '../../components';
-import { AuthService } from '../../services/supabase';
+import { useAuthStore } from '../../stores';
 
 export default function ResetPasswordEmailSentScreen() {
   const navigation = useNavigation();
@@ -60,7 +60,8 @@ export default function ResetPasswordEmailSentScreen() {
     try {
       setIsResending(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await AuthService.resetPassword(email);
+      const { resetPassword } = useAuthStore.getState();
+      await resetPassword(email);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
       // Reset timer
@@ -174,7 +175,7 @@ const styles = StyleSheet.create({
   },
   emailText: {
     color: COLORS.cyan,
-    fontWeight: '600',
+    fontWeight: '600' as const,
   },
   timerContainer: {
     marginBottom: SPACING.xxxl,
@@ -187,7 +188,7 @@ const styles = StyleSheet.create({
   },
   timerNumber: {
     color: COLORS.cyan,
-    fontWeight: '600',
+    fontWeight: '600' as const,
   },
   buttonContainer: {
     width: '100%',

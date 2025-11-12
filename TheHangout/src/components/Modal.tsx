@@ -104,7 +104,7 @@ export const Modal: React.FC<ModalProps> = ({
             ]}
           >
             <Card
-              style={[styles.modal, style]}
+              style={style ? [styles.modal, style] : styles.modal}
               padding="lg"
               testID={testID ? `${testID}-card` : undefined}
             >
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: '700' as const,
     color: COLORS.white,
     flex: 1,
   },
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   closeText: {
     fontSize: 20,
     color: COLORS.white,
-    fontWeight: '600',
+    fontWeight: '600' as const,
   },
   content: {
     flex: 1,

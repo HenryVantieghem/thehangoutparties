@@ -80,8 +80,8 @@ export const Input: React.FC<InputProps> = ({
           accessibilityHint={error || undefined}
           style={[
             styles.input,
-            leftIcon && styles.inputWithLeftIcon,
-            rightIcon && styles.inputWithRightIcon,
+            leftIcon ? styles.inputWithLeftIcon : undefined,
+            rightIcon ? styles.inputWithRightIcon : undefined,
             inputStyle,
           ]}
           placeholderTextColor={COLORS.gray}
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     color: COLORS.white,
     marginBottom: SPACING.xs,
   },
@@ -124,7 +124,6 @@ const styles = StyleSheet.create({
     minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    backdropFilter: 'blur(10px)',
   },
   inputFocused: {
     borderColor: COLORS.cyan,

@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.pink,
   },
   text: {
-    fontWeight: '600',
+    fontWeight: '600' as const,
     fontSize: 12,
   },
   achievementText: {

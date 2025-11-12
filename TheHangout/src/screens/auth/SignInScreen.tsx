@@ -1,395 +1,506 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
   Animated,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Ionicons } from '@expo/vector-icons';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
-import { Input, Button, Toast } from '../../components';
+import { z } from 'zod';
+
+import { Input } from '../../components/Input';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, ANIMATIONS } from '../../constants';
 import { useAuthStore } from '../../stores';
 import { validateEmail } from '../../utils';
 
-export default function SignInScreen() {
+// Validation schema
+const signInSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
+export function SignInScreen() {
   const navigation = useNavigation();
-  const { signIn, isLoading, error, setError } = useAuthStore();
+  const { signIn, loading, error } = useAuthStore();
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [emailError, setEmailError] = useState<string | null>(null);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [showToast, setShowToast] = useState(false);
-  const shakeAnim = useRef(new Animated.Value(0)).current;
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [emailValid, setEmailValid] = useState<boolean | null>(null);
+  const [passwordValid, setPasswordValid] = useState<boolean | null>(null);
+  
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
-  const validateForm = (): boolean => {
-    let isValid = true;
-
-    // Validate email
-    if (!email.trim()) {
-      setEmailError('Email is required');
-      isValid = false;
-    } else if (!validateEmail(email)) {
-      setEmailError('Invalid email format');
-      isValid = false;
-    } else {
-      setEmailError(null);
-    }
-
-    // Validate password
-    if (!password) {
-      setPasswordError('Password is required');
-      isValid = false;
-    } else if (password.length < 8) {
-      setPasswordError('Password must be at least 8 characters');
-      isValid = false;
-    } else {
-      setPasswordError(null);
-    }
-
-    if (!isValid) {
-      shakeAnimation();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    }
-
-    return isValid;
-  };
-
-  const shakeAnimation = () => {
-    Animated.sequence([
-      Animated.timing(shakeAnim, {
-        toValue: 10,
-        duration: 100,
+  useEffect(() => {
+    // Entry animations
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
         useNativeDriver: true,
       }),
-      Animated.timing(shakeAnim, {
-        toValue: -10,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(shakeAnim, {
-        toValue: 10,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(shakeAnim, {
+      Animated.spring(slideAnim, {
         toValue: 0,
-        duration: 100,
+        ...ANIMATIONS.springConfig,
         useNativeDriver: true,
       }),
     ]).start();
+  }, []);
+
+  const validateEmailInput = (value: string) => {
+    if (!value) {
+      setEmailValid(null);
+      return;
+    }
+    const isValid = validateEmail(value);
+    setEmailValid(isValid);
+    if (!isValid) {
+      setErrors({ ...errors, email: 'Invalid email format' });
+    } else {
+      const { email, ...rest } = errors;
+      setErrors(rest);
+    }
+  };
+
+  const validatePasswordInput = (value: string) => {
+    if (!value) {
+      setPasswordValid(null);
+      return;
+    }
+    const isValid = value.length >= 8;
+    setPasswordValid(isValid);
+    if (!isValid) {
+      setErrors({ ...errors, password: 'Password must be at least 8 characters' });
+    } else {
+      const { password, ...rest } = errors;
+      setErrors(rest);
+    }
   };
 
   const handleSignIn = async () => {
-    if (!validateForm()) {
+    // Haptic feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    // Validate form
+    const validation = signInSchema.safeParse({ email, password });
+    if (!validation.success) {
+      const fieldErrors: Record<string, string> = {};
+      validation.error.errors.forEach((err) => {
+        fieldErrors[err.path[0]] = err.message;
+      });
+      setErrors(fieldErrors);
+      
+      // Shake animation for error
+      Animated.sequence([
+        Animated.timing(slideAnim, {
+          toValue: 10,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: -10,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      
       return;
     }
 
     try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await signIn(email.trim(), password);
+      await signIn(email, password);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // Navigation handled by RootNavigator based on auth state
+      navigation.navigate('Main' as never);
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 3000);
+      
+      // Show appropriate error message
+      if (err.message?.includes('Invalid')) {
+        Alert.alert('Sign In Failed', 'Invalid email or password. Please try again.');
+      } else if (err.message?.includes('Network')) {
+        Alert.alert('Connection Error', 'Please check your internet connection and try again.');
+      } else {
+        Alert.alert('Error', 'Something went wrong. Please try again.');
+      }
     }
   };
 
-  const handleEmailChange = (text: string) => {
-    setEmail(text);
-    if (emailError && validateEmail(text)) {
-      setEmailError(null);
+  const handleAppleSignIn = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      
+      // Handle Apple sign in with credential
+      // This would integrate with your auth service
+      console.log('Apple credential:', credential);
+      
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      navigation.navigate('Main' as never);
+    } catch (err: any) {
+      if (err.code === 'ERR_CANCELED') {
+        // User cancelled Apple Sign In
+      } else {
+        Alert.alert('Apple Sign In Failed', 'Please try again.');
+      }
     }
   };
 
-  const handlePasswordChange = (text: string) => {
-    setPassword(text);
-    if (passwordError && text.length >= 8) {
-      setPasswordError(null);
-    }
-  };
-
-  const isFormValid = email.trim() && validateEmail(email) && password.length >= 8;
+  const isFormValid = emailValid === true && passwordValid === true;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.dark }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
+        style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ flexGrow: 1, padding: SPACING.lg }}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {/* Logo Section */}
-          <View style={styles.logoSection}>
-            <Text style={styles.logoText}>🎉</Text>
-            <Text style={styles.logoTitle}>The Hangout</Text>
-          </View>
-
-          {/* Headline */}
-          <Text style={styles.headline}>Welcome Back</Text>
-          <Text style={styles.subheadline}>Sign in to find parties and connect</Text>
-
-          {/* Form Fields */}
           <Animated.View
-            style={[
-              styles.formContainer,
-              {
-                transform: [{ translateX: shakeAnim }],
-              },
-            ]}
+            style={{
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            }}
           >
-            {/* Email Input */}
-            <View style={styles.inputWrapper}>
-              <Input
-                label="Email"
-                placeholder="your@email.com"
-                value={email}
-                onChangeText={handleEmailChange}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                error={emailError || undefined}
-                containerStyle={styles.inputContainer}
-                leftIcon={<Ionicons name="mail-outline" size={16} color={COLORS.gray600} />}
-                rightIcon={
-                  email && validateEmail(email) ? (
-                    <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
-                  ) : undefined
-                }
-              />
+            {/* Logo */}
+            <View style={{ alignItems: 'center', marginTop: SPACING.xxxl, marginBottom: SPACING.xxxl }}>
+              <Text style={{ fontSize: 48, fontWeight: '700' as const, color: COLORS.cyan }}>
+                TH
+              </Text>
             </View>
 
-            {/* Password Input */}
-            <View style={styles.inputWrapper}>
-              <Input
-                label="Password"
-                placeholder="••••••••"
-                value={password}
-                onChangeText={handlePasswordChange}
-                secureTextEntry={!showPassword}
-                error={passwordError || undefined}
-                containerStyle={styles.inputContainer}
-                leftIcon={<Ionicons name="lock-closed-outline" size={16} color={COLORS.gray600} />}
-                rightIcon={
+            {/* Headline */}
+            <Text
+              style={{
+                ...TYPOGRAPHY.largeTitle,
+                color: COLORS.white,
+                textAlign: 'center',
+                marginBottom: SPACING.sm,
+              }}
+            >
+              Welcome Back
+            </Text>
+            <Text
+              style={{
+                ...TYPOGRAPHY.body,
+                color: COLORS.gray500,
+                textAlign: 'center',
+                marginBottom: SPACING.xxxl,
+              }}
+            >
+              Sign in to find parties and connect
+            </Text>
+
+            {/* Form */}
+            <View style={{ marginBottom: SPACING.xxl }}>
+              {/* Email Input */}
+              <View style={{ marginBottom: SPACING.xl }}>
+                <Text
+                  style={{
+                    ...TYPOGRAPHY.caption1,
+                    fontWeight: '600' as const,
+                    color: COLORS.white,
+                    marginBottom: SPACING.sm,
+                  }}
+                >
+                  Email
+                </Text>
+                <View style={{ position: 'relative' }}>
+                  <Input
+                    value={email}
+                    onChangeText={(text) => {
+                      setEmail(text);
+                      validateEmailInput(text);
+                    }}
+                    onBlur={() => validateEmailInput(email)}
+                    placeholder="your@email.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    textContentType="emailAddress"
+                    style={{
+                      paddingLeft: 40,
+                      paddingRight: 40,
+                      borderColor: 
+                        emailValid === false ? COLORS.error : 
+                        emailValid === true ? COLORS.success : 
+                        'rgba(255, 255, 255, 0.2)',
+                    }}
+                  />
+                  <Ionicons
+                    name="mail-outline"
+                    size={16}
+                    color={COLORS.gray600}
+                    style={{
+                      position: 'absolute',
+                      left: 12,
+                      top: '50%',
+                      transform: [{ translateY: -8 }],
+                    }}
+                  />
+                  {emailValid === true && (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={16}
+                      color={COLORS.success}
+                      style={{
+                        position: 'absolute',
+                        right: 12,
+                        top: '50%',
+                        transform: [{ translateY: -8 }],
+                      }}
+                    />
+                  )}
+                </View>
+                {errors.email && (
+                  <Text
+                    style={{
+                      ...TYPOGRAPHY.caption1,
+                      color: COLORS.error,
+                      marginTop: SPACING.xs,
+                    }}
+                  >
+                    {errors.email}
+                  </Text>
+                )}
+              </View>
+
+              {/* Password Input */}
+              <View style={{ marginBottom: SPACING.md }}>
+                <Text
+                  style={{
+                    ...TYPOGRAPHY.caption1,
+                    fontWeight: '600' as const,
+                    color: COLORS.white,
+                    marginBottom: SPACING.sm,
+                  }}
+                >
+                  Password
+                </Text>
+                <View style={{ position: 'relative' }}>
+                  <Input
+                    value={password}
+                    onChangeText={(text) => {
+                      setPassword(text);
+                      validatePasswordInput(text);
+                    }}
+                    onBlur={() => validatePasswordInput(password)}
+                    placeholder="••••••••"
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoComplete="password"
+                    textContentType="password"
+                    style={{
+                      paddingLeft: 40,
+                      paddingRight: 40,
+                      borderColor:
+                        passwordValid === false ? COLORS.error :
+                        passwordValid === true ? COLORS.success :
+                        'rgba(255, 255, 255, 0.2)',
+                    }}
+                  />
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={16}
+                    color={COLORS.gray600}
+                    style={{
+                      position: 'absolute',
+                      left: 12,
+                      top: '50%',
+                      transform: [{ translateY: -8 }],
+                    }}
+                  />
                   <TouchableOpacity
                     onPress={() => {
+                      Haptics.selectionAsync();
                       setShowPassword(!showPassword);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      top: '50%',
+                      transform: [{ translateY: -8 }],
                     }}
                   >
                     <Ionicons
-                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                      size={20}
+                      name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+                      size={16}
                       color={COLORS.gray600}
                     />
                   </TouchableOpacity>
-                }
+                </View>
+                {errors.password && (
+                  <Text
+                    style={{
+                      ...TYPOGRAPHY.caption1,
+                      color: COLORS.error,
+                      marginTop: SPACING.xs,
+                    }}
+                  >
+                    {errors.password}
+                  </Text>
+                )}
+              </View>
+
+              {/* Forgot Password Link */}
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  navigation.navigate('ResetPassword' as never);
+                }}
+                style={{ alignSelf: 'flex-end' }}
+              >
+                <Text style={{ ...TYPOGRAPHY.caption1, color: COLORS.cyan }}>
+                  Forgot password?
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Sign In Button */}
+            <LinearGradient
+              colors={isFormValid ? [COLORS.cyan, COLORS.pink] : [COLORS.gray700, COLORS.gray700]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{
+                borderRadius: RADIUS.md,
+                marginBottom: SPACING.xl,
+                opacity: isFormValid ? 1 : 0.5,
+              }}
+            >
+              <TouchableOpacity
+                onPress={handleSignIn}
+                disabled={!isFormValid || loading}
+                activeOpacity={0.8}
+                style={{
+                  height: 56,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+              >
+                {loading ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <Text style={{ ...TYPOGRAPHY.bodyBold, color: COLORS.white }}>
+                    Sign In
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </LinearGradient>
+
+            {/* Divider */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginBottom: SPACING.xl,
+              }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  height: 1,
+                  backgroundColor: COLORS.gray600,
+                }}
+              />
+              <Text
+                style={{
+                  ...TYPOGRAPHY.caption1,
+                  color: COLORS.gray600,
+                  marginHorizontal: SPACING.lg,
+                }}
+              >
+                Or continue with
+              </Text>
+              <View
+                style={{
+                  flex: 1,
+                  height: 1,
+                  backgroundColor: COLORS.gray600,
+                }}
               />
             </View>
 
-            {/* Forgot Password Link */}
-            <TouchableOpacity
-              onPress={() => {
-                navigation.navigate('ResetPassword' as never);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }}
-              style={styles.forgotPassword}
-            >
-              <Text style={styles.forgotPasswordText}>Forgot password?</Text>
-            </TouchableOpacity>
-          </Animated.View>
-
-          {/* Sign In Button */}
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity
-              onPress={handleSignIn}
-              activeOpacity={0.8}
-              disabled={!isFormValid || isLoading}
-            >
-              <LinearGradient
-                colors={
-                  isFormValid && !isLoading
-                    ? [COLORS.cyan, COLORS.pink]
-                    : [COLORS.gray700, COLORS.gray700]
-                }
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.signInButton}
+            {/* Apple Sign In */}
+            {Platform.OS === 'ios' && (
+              <TouchableOpacity
+                onPress={handleAppleSignIn}
+                style={{
+                  height: 56,
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                  borderRadius: RADIUS.md,
+                  marginBottom: SPACING.xxl,
+                }}
               >
-                {isLoading ? (
-                  <View style={styles.loadingContainer}>
-                    <Text style={styles.signInButtonText}>Signing in...</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.signInButtonText}>Sign In</Text>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
+                <Ionicons
+                  name="logo-apple"
+                  size={20}
+                  color={COLORS.white}
+                  style={{ marginRight: SPACING.sm }}
+                />
+                <Text style={{ ...TYPOGRAPHY.bodyBold, color: COLORS.white }}>
+                  Sign in with Apple
+                </Text>
+              </TouchableOpacity>
+            )}
 
-          {/* Divider */}
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>Or continue with</Text>
-            <View style={styles.dividerLine} />
-          </View>
+            <View style={{ flex: 1 }} />
 
-          {/* Apple Sign In Button */}
-          <Button
-            title="Sign in with Apple"
-            variant="secondary"
-            size="large"
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              // Apple Sign In implementation
-            }}
-            style={styles.appleButton}
-            leftIcon={<Ionicons name="logo-apple" size={20} color={COLORS.white} />}
-          />
-
-          {/* Sign Up Link */}
-          <View style={styles.signUpContainer}>
-            <Text style={styles.signUpText}>Don't have an account? </Text>
-            <TouchableOpacity
-              onPress={() => {
-                navigation.navigate('SignUp' as never);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            {/* Sign Up Link */}
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'center',
+                marginTop: SPACING.xl,
+                marginBottom: SPACING.lg,
               }}
             >
-              <Text style={styles.signUpLink}>Sign Up</Text>
-            </TouchableOpacity>
-          </View>
+              <Text style={{ ...TYPOGRAPHY.body, color: COLORS.gray500 }}>
+                Don't have an account?{' '}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  navigation.navigate('SignUp' as never);
+                }}
+              >
+                <Text style={{ ...TYPOGRAPHY.bodyBold, color: COLORS.cyan }}>
+                  Sign Up
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {/* Error Toast */}
-      {showToast && error && (
-        <Toast
-          message={error}
-          type="error"
-          onDismiss={() => setShowToast(false)}
-        />
-      )}
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.dark,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.xxl,
-  },
-  logoSection: {
-    alignItems: 'center',
-    marginBottom: SPACING.xxxl,
-  },
-  logoText: {
-    fontSize: 48,
-    marginBottom: SPACING.sm,
-  },
-  logoTitle: {
-    ...TYPOGRAPHY.title1,
-    color: COLORS.cyan,
-  },
-  headline: {
-    ...TYPOGRAPHY.largeTitle,
-    color: COLORS.white,
-    textAlign: 'center',
-    marginBottom: SPACING.sm,
-  },
-  subheadline: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.gray500,
-    textAlign: 'center',
-    marginBottom: SPACING.xxxl,
-  },
-  formContainer: {
-    marginBottom: SPACING.xl,
-  },
-  inputWrapper: {
-    marginBottom: SPACING.lg,
-  },
-  inputContainer: {
-    marginBottom: 0,
-  },
-  forgotPassword: {
-    alignSelf: 'flex-end',
-    marginTop: SPACING.sm,
-  },
-  forgotPasswordText: {
-    ...TYPOGRAPHY.caption1,
-    color: COLORS.cyan,
-  },
-  buttonContainer: {
-    marginBottom: SPACING.xl,
-  },
-  signInButton: {
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 56,
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  signInButtonText: {
-    ...TYPOGRAPHY.bodyBold,
-    color: COLORS.white,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: SPACING.xl,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: COLORS.gray600,
-  },
-  dividerText: {
-    ...TYPOGRAPHY.caption1,
-    color: COLORS.gray600,
-    marginHorizontal: SPACING.md,
-  },
-  appleButton: {
-    marginBottom: SPACING.xl,
-  },
-  signUpContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: SPACING.lg,
-  },
-  signUpText: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.gray500,
-  },
-  signUpLink: {
-    ...TYPOGRAPHY.bodyBold,
-    color: COLORS.cyan,
-  },
-});

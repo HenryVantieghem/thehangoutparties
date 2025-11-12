@@ -122,7 +122,7 @@ const styles = StyleSheet.create({
   },
   username: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     color: COLORS.cyan,
     marginBottom: SPACING.xs,
   },

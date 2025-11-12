@@ -1,13 +1,9 @@
-/**
- * Complete design system constants for The Hangout
- */
-
 export const COLORS = {
   // Primary
   dark: '#0A0E27',
   darkSecondary: '#1a1f3a',
   darkTertiary: '#2D3748',
-
+  
   // Accent
   cyan: '#00D9FF',
   cyanLight: '#00FFFF',
@@ -15,7 +11,8 @@ export const COLORS = {
   pink: '#FF006E',
   pinkLight: '#FF4D95',
   pinkDark: '#CC0052',
-
+  orange: '#FF9500',
+  
   // Neutral
   white: '#FFFFFF',
   gray100: '#F7FAFC',
@@ -26,14 +23,14 @@ export const COLORS = {
   gray600: '#718096',
   gray700: '#4A5568',
   gray800: '#2D3748',
-
+  
   // Status
   error: '#FF3B30',
   errorLight: '#FF6B63',
   success: '#34C759',
   warning: '#FF9500',
   info: '#00D9FF',
-} as const;
+};
 
 export const TYPOGRAPHY = {
   display1: { fontSize: 40, fontWeight: '700' as const, lineHeight: 48, letterSpacing: -0.5 },
@@ -47,7 +44,7 @@ export const TYPOGRAPHY = {
   bodySmall: { fontSize: 14, fontWeight: '400' as const, lineHeight: 20, letterSpacing: 0.2 },
   caption1: { fontSize: 12, fontWeight: '400' as const, lineHeight: 16, letterSpacing: 0.4 },
   caption2: { fontSize: 11, fontWeight: '400' as const, lineHeight: 13, letterSpacing: 0.5 },
-} as const;
+};
 
 export const SPACING = {
   xs: 4,
@@ -57,7 +54,7 @@ export const SPACING = {
   xl: 24,
   xxl: 32,
   xxxl: 48,
-} as const;
+};
 
 export const RADIUS = {
   xs: 4,
@@ -66,7 +63,38 @@ export const RADIUS = {
   lg: 16,
   xl: 20,
   full: 9999,
-} as const;
+};
+
+export const SHADOWS = {
+  small: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  medium: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  large: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  colored: {
+    shadowColor: COLORS.cyan,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+};
 
 export const ANIMATIONS = {
   fast: 100,
@@ -76,7 +104,7 @@ export const ANIMATIONS = {
   slowest: 500,
   springConfig: { damping: 10, mass: 1, stiffness: 100, overshootClamping: false },
   easeInOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
-} as const;
+};
 
 export const API = {
   PARTIES_SEARCH_RADIUS: 10,
@@ -86,7 +114,7 @@ export const API = {
   PARTY_PAGINATION_LIMIT: 10,
   IMAGE_MAX_WIDTH: 1080,
   IMAGE_QUALITY: 0.9,
-} as const;
+};
 
 export const VALIDATION = {
   USERNAME_MIN: 3,
@@ -97,4 +125,4 @@ export const VALIDATION = {
   PARTY_DESC_MAX: 500,
   CAPTION_MAX: 200,
   MESSAGE_MAX: 300,
-} as const;
+};

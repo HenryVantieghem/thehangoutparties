@@ -44,7 +44,7 @@ export const FriendRequest: React.FC<FriendRequestProps> = ({
   return (
     <Card
       testID={testID}
-      style={[styles.card, style]}
+      style={style ? [styles.card, style] : styles.card}
       padding="md"
     >
       <View style={styles.content}>
@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
   },
   username: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     color: COLORS.white,
     marginBottom: SPACING.xs,
   },

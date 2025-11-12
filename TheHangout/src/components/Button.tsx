@@ -7,6 +7,7 @@ import {
   ViewStyle,
   TextStyle,
   TouchableOpacityProps,
+  View,
 } from 'react-native';
 import { COLORS, SPACING } from '../../constants';
 
@@ -131,7 +132,7 @@ const styles = StyleSheet.create({
   },
   // Text styles
   text: {
-    fontWeight: '600',
+    fontWeight: '600' as const,
     textAlign: 'center',
   },
   leftIcon: {
